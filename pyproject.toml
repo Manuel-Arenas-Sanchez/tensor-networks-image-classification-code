@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tn-dl"
+version = "0.1.0"
+description = "Tensor-network deep learning template built with PyTorch and TensorKrowch."
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    "PyYAML>=6.0",
+    "torch>=2.8",
+    "torchvision>=0.26",
+    "tensorkrowch>=1.1.6",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.0",
+    "ruff>=0.15",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --basetemp=.pytest_tmp -p no:cacheprovider"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",
+    "F",
+    "I",
+    "B",
+    "UP",
+]

@@ -1,0 +1,11 @@
+name: local
+output_root: runs
+python_executable: python
+slurm:
+  partition: gpu
+  time: "00:30:00"
+  memory: 16G
+  gpus: 1
+  cpus_per_task: 4
+  account:
+  job_name_prefix: tn-dl
