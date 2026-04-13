@@ -6,7 +6,6 @@
 __pycache__/
 *.pyc
 runs/
-data/
 .worktrees/
 pip-build-tracker-*/
 pip-ephem-wheel-cache-*/
