@@ -6,8 +6,9 @@
 __pycache__/
 *.pyc
 runs/
-data/
+/data/
 .worktrees/
+.git_backup_20260413/
 pip-build-tracker-*/
 pip-ephem-wheel-cache-*/
 pip-install-*/
