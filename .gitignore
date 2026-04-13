@@ -5,8 +5,8 @@
 .ruff_cache/
 __pycache__/
 *.pyc
-.git_backup_20260413/
 runs/
+data/
 .worktrees/
 pip-build-tracker-*/
 pip-ephem-wheel-cache-*/
