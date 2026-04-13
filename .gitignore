@@ -5,6 +5,7 @@
 .ruff_cache/
 __pycache__/
 *.pyc
+.git_backup_20260413/
 runs/
 .worktrees/
 pip-build-tracker-*/
