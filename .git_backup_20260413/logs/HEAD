@@ -1,9 +1,0 @@
-0000000000000000000000000000000000000000 d4451d5e5f5b4e1645b06f8f8c3cf1fe16f7428d Manuel Arenas <manuel.arenas@ITCL.dominio> 1775801934 +0200	clone: from https://github.com/DOKOS-TAYOS/Tensor-Network-Image-Analysis-Template.git
-d4451d5e5f5b4e1645b06f8f8c3cf1fe16f7428d 10d08a39f97b2e914828fa87a53945218bec0476 Manuel Arenas <manuel.arenas@ITCL.dominio> 1776077729 +0200	commit: Subir proyecto sin README local
-10d08a39f97b2e914828fa87a53945218bec0476 1d7f0598c17e16565f5929df0e70556de2545534 Manuel Arenas <manuel.arenas@ITCL.dominio> 1776078229 +0200	commit: Merge remote main and add local project files
-1d7f0598c17e16565f5929df0e70556de2545534 135a8bf7d655da7fc8e225a5313179976bda1f06 Manuel Arenas <manuel.arenas@ITCL.dominio> 1776078330 +0200	pull origin main --rebase (start): checkout 135a8bf7d655da7fc8e225a5313179976bda1f06
-135a8bf7d655da7fc8e225a5313179976bda1f06 1d7f0598c17e16565f5929df0e70556de2545534 Manuel Arenas <manuel.arenas@ITCL.dominio> 1776078525 +0200	rebase (abort): returning to refs/heads/main
-1d7f0598c17e16565f5929df0e70556de2545534 43fc3f788cf333a921d2b27f4449cf05ed2c10e6 Manuel Arenas <manuel.arenas@ITCL.dominio> 1776078537 +0200	commit: Upload project files
-43fc3f788cf333a921d2b27f4449cf05ed2c10e6 135a8bf7d655da7fc8e225a5313179976bda1f06 Manuel Arenas <manuel.arenas@ITCL.dominio> 1776078548 +0200	pull origin main --rebase (start): checkout 135a8bf7d655da7fc8e225a5313179976bda1f06
-135a8bf7d655da7fc8e225a5313179976bda1f06 43fc3f788cf333a921d2b27f4449cf05ed2c10e6 Manuel Arenas <manuel.arenas@ITCL.dominio> 1776078805 +0200	rebase (abort): returning to refs/heads/main
-43fc3f788cf333a921d2b27f4449cf05ed2c10e6 43fc3f788cf333a921d2b27f4449cf05ed2c10e6 Manuel Arenas <manuel.arenas@ITCL.dominio> 1776078811 +0200	checkout: moving from main to main
