@@ -2,5 +2,6 @@ from __future__ import annotations
 
 from tn_dl.embeddings.base import BaseImageEmbedding
 from tn_dl.embeddings.trig import TrigPixelEmbedding
+from tn_dl.embeddings.patch import PatchEmbedding
 
-__all__ = ["BaseImageEmbedding", "TrigPixelEmbedding"]
+__all__ = ["BaseImageEmbedding", "TrigPixelEmbedding", "PatchEmbedding"]
