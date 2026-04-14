@@ -24,7 +24,7 @@ class ModelConfig:
     n_classes: int
     out_position: int | None = None
     boundary: str = "obc"
-
+    patch_size: int | None = None
 
 @dataclass(slots=True)
 class TrainingConfig:

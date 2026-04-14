@@ -82,6 +82,7 @@ def _parse_model_config(payload: dict[str, Any]) -> ModelConfig:
         n_classes=_require_int(payload, "n_classes"),
         out_position=_optional_int(payload.get("out_position")),
         boundary=str(payload.get("boundary", "obc")),
+        patch_size=_optional_int(payload.get("patch_size")),
     )
 
 

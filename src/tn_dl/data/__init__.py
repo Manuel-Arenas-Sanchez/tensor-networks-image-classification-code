@@ -1,6 +1,9 @@
-import tn_dl.data.flowers
 from dataclasses import dataclass
+
 from torch.utils.data import DataLoader
+
+import tn_dl.data.flowers
+
 
 @dataclass
 class DataLoaders:
