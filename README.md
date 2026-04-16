@@ -4,7 +4,7 @@ Bachelor's Thesis (TFG) project exploring **Tensor Networks** as an alternative 
 
 The **Oxford Flowers 102** dataset is used as a preliminary benchmark before migrating to domain-specific laboratory imaging data.
 
-> **Status:** active development. This repository evolves from a PyTorch/TensorKrowch template into a custom tensor-network classifier built by the author.
+> **Status:** active development. The training pipeline and reference MPS baseline are working, while a custom hierarchical TTN is under active prototyping.
 
 ---
 
@@ -24,7 +24,8 @@ The **Oxford Flowers 102** dataset is used as a preliminary benchmark before mig
 - [x] Reference MPS layer wired through `tensorkrowch` (provisional, will be replaced).
 - [x] `TrigPixelEmbedding` (per-pixel cos/sin embedding).
 - [x] `PatchEmbedding` implemented and integrated into the model factory.
-- [ ] Custom tensor-network layer (in design).
+- [x] First prototype of a custom hierarchical TTN layer scaffolded in `src/tn_dl/layers/mps_custom.py`.
+- [ ] Integrate the custom TTN into the model factory and validate end-to-end training.
 - [ ] Full training & evaluation sweep on Flowers 102.
 - [ ] Migration to laboratory imaging datasets.
 
@@ -38,7 +39,7 @@ src/tn_dl/
 ├── config/         # Dataclass schema + YAML loader
 ├── data/           # OxfordFlowersDataset + DataLoader factory
 ├── embeddings/     # TrigPixelEmbedding, PatchEmbedding
-├── layers/         # MPSClassifier (provisional), tensor-network base class
+├── layers/         # Reference MPS layer + custom TTN prototype + TN base class
 ├── models/         # ImageClassifier + build_model factory
 ├── training/       # Training loop, evaluation, checkpointing
 └── utils/          # Device, I/O, seeding helpers
@@ -60,7 +61,7 @@ scripts/            # Local + SLURM launch scripts
 3. **Embedding** — each image is mapped into a sequence of local feature vectors with shape `[B, sequence_length, local_dim]`. Two embeddings are currently available:
    - `TrigPixelEmbedding`: one site per pixel-channel, using `(cos θ, sin θ)` with `θ = π · pixel / 2`.
    - `PatchEmbedding`: splits the image into non-overlapping patches of size `patch_size × patch_size` and projects each flattened patch to `local_dim` with a linear layer.
-4. **Tensor network layer** — consumes the embedded sequence and produces class logits. Currently a Matrix Product State (`tensorkrowch.models.MPSLayer`), soon to be replaced by a custom architecture.
+4. **Tensor network layer** — consumes the embedded sequence and produces class logits. The current training path uses a reference Matrix Product State (`tensorkrowch.models.MPSLayer`). In parallel, `mps_custom.py` contains an in-progress hierarchical TTN prototype based on 3-node MPS blocks.
 5. **Training** — AdamW optimizer, cross-entropy loss, best-checkpoint saving by validation accuracy. Per-epoch metrics are written to CSV.
 
 ---
@@ -81,6 +82,22 @@ embedding(image)  →  tensor  [B, sequence_length, local_dim]
 | `PatchEmbedding`      | `(H / patch_size) · (W / patch_size)` |
 
 This keeps the tensor-network layer decoupled from the image representation and allows plugging new embeddings or new TN architectures without touching the training engine.
+
+---
+
+## Custom TTN Prototype
+
+The repository now also includes an experimental `CustomTTN` scaffold in `src/tn_dl/layers/mps_custom.py`.
+
+- It separates the TensorKrowch network definition from the PyTorch wrapper layer.
+- It organizes the custom architecture as hierarchical 3-to-1 MPS blocks stored by level.
+- It is intended to support both raw sequentialized inputs and patch-based embeddings through the same `[B, sequence_length, local_dim]` contract.
+
+At the moment this prototype is a design and integration checkpoint, not the default training backend:
+
+- `build_model(...)` still routes `layer_name: mps` to the reference `MPSClassifier`.
+- The custom TTN code is still being validated at the contraction and training levels.
+- The final classifier for the prototype is currently kept outside the TensorKrowch network for simplicity.
 
 ---
 
@@ -185,4 +202,4 @@ Universidad Europea de Madrid · Internship at ITCL
 
 ## Notes
 
-This repository is continuously updated as the project evolves. The current focus is finishing the embedding stage before designing and implementing the custom tensor-network classifier.
+This repository is continuously updated as the project evolves. The current focus is turning the custom hierarchical TTN prototype into a fully integrated and trainable alternative to the reference MPS baseline.
