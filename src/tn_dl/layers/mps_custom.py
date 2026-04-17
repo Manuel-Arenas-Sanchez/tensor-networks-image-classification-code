@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 
 import tensorkrowch as tk
+import torch
 import torch.nn as nn
 
 from tn_dl.layers.base import BaseTensorNetworkLayer
@@ -30,11 +31,12 @@ class CustomTTN(tk.TensorNetwork):
 
         self.input_nodes = []
         self.blocks_by_level = []
+        self.padding_nodes_by_level = []
         self.root_node = None
         self.classifier_node = None
 
         self._build_tree()
-        self._conenect_levels()
+        self._connect_levels()
     
     def _build_mps3_block(
         self,
@@ -78,19 +80,42 @@ class CustomTTN(tk.TensorNetwork):
             "output_edge": center_node["output"],
             "output_node": center_node,
         }
+    
+    def _build_padding_node(self, dim: int, name: str) -> tk.Node:
+        """
+        Nodo constante, no entrenable, que se usa para rellenar posiciones sin dato real. 
+
+        Se crea como tk.Node, por lo que su tensor no se registra como nn.Parameter y no recibe 
+        gradientes. El tensor se inicializa a [1, 0, ..., 0], un vector neutro no-nulo para no
+        colapsar el bloque a cero.
+        """
+
+        node = tk.Node(
+            shape = (dim,),
+            axes_names = ("output",),
+            name = name,
+            network = self,
+        )
+        neutral = torch.zeros(dim)
+        neutral[0] = 1.0
+        node.tensor = neutral
+        return node
 
     def _build_tree(self) -> None:
         """
-        Aqui contruyo la jerarquía de los bloques de MPS de 3 nodos.
+        Aqui se construye la jerarquía de bloques MPS con padding estructural.
 
-        La idea es que no es necesario crear nodos extra para meter los datos, ya que utilizaremos 
-        los nodos de las MPS's del primer nivel para que sean los puntos de entrada reales. Eso es 
-        posible ya que en cada bloque MPS, los nodos tienen indices "inputs", precisamente para 
-        meter los datos en esos índices.
+        En cada nivel k:
+            - num_blocks_k = ceil(num_sites_k / 3)
+            - capacity_k = num_blocks_k * 3
+            - padding_k = capacity_k - num_sites_k
 
-        Aqui se construye la jerarquía pero no se conectan los outputs de un nivel con los inputs
-        del siguiente nivel. Eso se hará en `def _connect_levels()`
+        Se crean num_blocks_k bloques MPS de 3 nodos uniformes, y además padding_k nodos constantes
+        (tk.Node fijos) que llenarían los edges sobrantes.
 
+        Se guarda en paralelo:
+            - self.blocks_by_level[k]         -> lista de diccionarios de bloque
+            - self.padding_nodes_by_level[k]  -> lista de nodos de padding del nivel k
         """ 
         current_num_sites = self.sequence_length
         current_input_dim = self.local_dim
@@ -98,8 +123,11 @@ class CustomTTN(tk.TensorNetwork):
 
         while current_num_sites > 1:
             num_blocks = math.ceil(current_num_sites / 3)
-            level_blocks = []
+            capacity = num_blocks * 3
+            padding_needed = capacity - current_num_sites
 
+            # 1 Bloques reales
+            level_blocks = []
             for block_idx in range(num_blocks):
                 block = self._build_mps3_block(
                     input_dim = current_input_dim,
@@ -107,116 +135,145 @@ class CustomTTN(tk.TensorNetwork):
                     prefix = f"level{level_idx}_block{block_idx}",
                 )
                 level_blocks.append(block)
-            
             self.blocks_by_level.append(level_blocks)
 
+            # 2. Nodos de padding para los huecos
+            level_padding = []
+            for p_idx in range(padding_needed):
+                pad = self._build_padding_node(
+                    dim = current_input_dim,
+                    name = f"level{level_idx}_pad{p_idx}",
+                )
+                level_padding.append(pad)
+            self.padding_nodes_by_level.append(level_padding)
+
+            # 3. Avanzar al siguiente nivel
             current_num_sites = num_blocks
             current_input_dim = self.bond_dim
             level_idx += 1
 
-    def _conenect_levels(self) -> None:
+    def _connect_levels(self) -> None:
         """
-        Aquí se conectan los niveles. La idea es la siguiente:
-            - El nivel 0 recibe los datos reales.
-            - El nivel 1 recibe outputs de bloques del nivel 0.
-            - El nivel 2 recibe outputs del nivel 1.
-            - Etc...
+        Aquí se conectan los edges input de cada nivel con lo que les corresponde:
+
+        NIVEL 0:
+            - Los primeros sequence_length edges son reales (se les atan data_nodes en set_data_nodes)
+              Aqui no se hace nada con ellos
+            - Los padding_needed_0 edges restantes se conectan a los nodos de padding del nivel 0.
         
+        NIVEL K > 0:
+            - Los primeros num_blocks_{k-1} edges se conectan a los output_edges de los bloques del
+              nivel k-1.
+            - Los padding_needed_k edges restantes se conectan a los nodos de padding del nivel k.
         """
-        for level_idx in range(len(self.blocks_by_level) - 1):
-            current_level = self.blocks_by_level[level_idx]
-            next_level = self.blocks_by_level[level_idx + 1]
 
-            outputs = [block["output_edge"] for block in current_level]
+        for level_idx, level_blocks in enumerate(self.blocks_by_level):
+            level_padding = self.padding_nodes_by_level[level_idx]
 
-            # conectar outputs de 3 en 3 a los inputs del siguiente nivel
-            output_ptr = 0
-            for next_block in next_level:
-                for input_edge in next_block["input_edges"]:
-                    if output_ptr < len(outputs):
-                        outputs[output_ptr] ^ input_edge
-                        output_ptr += 1
-                    else:
-                        # Decidir como manejar padding/restos
-                        pass
+            #Aplanar todos los input edges del nivel en orden
+            input_edges = []
+            for block in level_blocks:
+                input_edges.extend(block["input_edges"])
+            
+            if level_idx == 0:
+                # Los edges reales quedan libres (se enganchan en set_data_nodes).
+                # Solo conectamos los de padding.
+                for pad_idx, pad_node in enumerate(level_padding):
+                    edge_idx = self.sequence_length + pad_idx
+                    pad_node["output"] ^ input_edges[edge_idx]
+            else:
+                # Edges reales: conectar con outputs del nivel anterior
+                prev_outputs = [b["output_edge"] for b in self.blocks_by_level[level_idx - 1]]
+
+                for i, prev_out in enumerate(prev_outputs):
+                    prev_out ^ input_edges[i]
+                    
+                # Edges de padding: conectar con los nodos de padding del nivel k
+                for pad_idx, pad_node in enumerate(level_padding):
+                    edge_idx = len(prev_outputs) + pad_idx
+                    pad_node["output"] ^ input_edges[edge_idx]
 
     def set_data_nodes(self) -> None:
         """
-        Esta función solo aplica al primer nivel. No se usa para conectar bloques entre sí. Solo se
-        usa para decirle a TensorKrowch dónde está el batch real.
+        Esta función solo aplica al nivel 0. Le dice a TensorKrowch donde tiene que enchufar el
+        batch real. El sitio es sobre los primeros sequence_length input edges del nivel 0.
 
         Diferencia de conceptos:
         `input_edges`: es el primer nivel, son puertos físicos reales
         `data_nodes`: los crea TensorKrowch cuando llamo a self.network(x)
+
+        Los edges sobrantes del nivel 0 ya están conectados a nodos de padding estructural,
+        (recomendable ver _connect_levels), así que no pasan aquí.
         """
-        input_edges = []
-
         first_level = self.blocks_by_level[0]
+        all_input_edges = []
         for block in first_level:
-            input_edges.extend(block["input_edges"])
+            all_input_edges.extend(block["input_edges"])
 
-            # Si he hecho padding estructural y tengo más edges que datos reales,
-            # aqui es donde puedo cortar a sequence_length
-            input_edges = input_edges[:self.sequence_length]
-
-            super().set_data_nodes(input_edges, num_batch_edges = 1)
+        real_edges = all_input_edges[: self.sequence_length]
+        super().set_data_nodes(real_edges, num_batch_edges = 1)
     
     def contract(self):
         """
-        Aquí solo ejecuto las contracciones correspondientes.
+        Aquí se ejecutan las contracciones del árbol completo, de leaves a raíz.
+
+        Para cada bloque se contraen internamente los 3 nodos MPS (left, center, right) junto con
+        sus "vecinos" sobre el edge input:
+            - Nivel 0, posición real:      vecino = data_node (creado por set_data_nodes).
+            - Nivel 0, posición padding:   vecino = nodo de padding constante.
+            - Nivel k>0, posicion real:    vecino = output contraido del bloque del nivel k-1.
+            - Nivel k>0, posición padding: vecino = nodo de padding constante.
+        
+        En todos los casos TensorKrowch ya ha conectado el edge input con ese vecino en
+        connect_levels o en set_data_nodes, así que solo hay que hacer las contracciones.
         """
-        # 1. Contraigo los datos con los bloques del primer nivel
         current_outputs = []
 
-        first_level = self.blocks_by_level[0]
-        for block in first_level:
-            out_node = self._contract_blocks(block)
-            current_outputs.append(out_node)
+        for block in self.blocks_by_level[0]:
+            current_outputs.append(self._contract_block(block))
         
-        # 2. Ir subiendo nivel a nivel
+
         for level_idx in range(1, len(self.blocks_by_level)):
             next_outputs = []
-            level_blocks = self.blocks_by_level[level_idx]
-
-            for block_idx, block in enumerate(level_blocks):
-                # este bloque ya tiene conectados como inputs
-                # los outputs del nivel anterior
-                out_node = self._contract_blocks(block)
-                next_outputs.append(out_node)
-            
+            for block in self.blocks_by_level[level_idx]:
+                next_outputs.append(self._contract_block(block))
             current_outputs = next_outputs
         
-        # 3. Debe quedar un único nodo raíz
-        root = current_outputs[0]
+        assert len(current_outputs) == 1, (
+            f"Se esperaba un único nodo raíz, se obtuvieron {len(current_outputs)}"
+        )
+        root_node = current_outputs[0]
+        self.root_node = root_node
 
-        # 4. Clasificación final
-        logits = self._contract_classifier(root)
+        # La raiz debe de estar en formato de Pytorch y no de TK.
+        root_tensor = root_node.tensor
 
-        return logits
+        return root_tensor
     
-    def _contract_blocks(self, block):
+    def _contract_block(self, block):
         """
-        Esto es un helper para contraer cada bloque.
-
-        Aquí TensorKrowch manda mucho. Este helper debe:
-            - Coger los 3 nodos del bloque MPS.
-            - Contraerlos internamente.
-            - Devolver el nodo resultante con el edge "output" libre si aún debe subir de nivel.
-            - Si no sube de nivel/capa más, devuelve el resultado final.
-        
-        Todavia queda por ajustar:
-            - si el edge "output" queda libre como quiero.
-            - como se comporta `@` según el tipo de contracción exacta.
-            - si necesito `stack` o reordenar edges
+        Contrae un bloque MPS de 3 nodos absorbiendo el vecino que esté encganchado a cada edge
+        input. Devuelve el nodo resultante, que tiene un único edge libre: el "output" del
+        center_node.
         """
-
         left, center, right = block["nodes"]
 
-        tmp = left @ center
-        out = tmp @ right
+        # Nota TK: node.neighbours(axis_name) devuelve el nodo conectado al edge con ese nombre de 
+        # eje. Si la versión de TensorKrowch expone otra API para acceder al vecino 
+        # (p. ej. left["input"].node2 o similar), habrá que ajustarlo aquí.
 
+        partner_left = left.neighbours("input")
+        partner_center = center.neighbours("input")
+        partner_right = right.neighbours("input")
+
+        #Contraer cada nodo MPS con su vecino sobre el edge "input".
+        L = left @ partner_left
+        C = center @ partner_center
+        R = right @ partner_right
+
+        out = L @ C @ R
         return out
-    
+
 
 class MPSClassifier_1(BaseTensorNetworkLayer):
     def __init__(
@@ -224,7 +281,7 @@ class MPSClassifier_1(BaseTensorNetworkLayer):
         sequence_length: int,
         local_dim: int,
         n_classes: int,
-        bound_dim: int,
+        bond_dim: int,
         out_position: int | None = None,
         boundary: str = "obc",
     ) -> None:
@@ -232,20 +289,20 @@ class MPSClassifier_1(BaseTensorNetworkLayer):
         self.sequence_length = sequence_length
         self.local_dim = local_dim
         self.n_classes = n_classes
-        self.bond_dim = bound_dim
+        self.bond_dim = bond_dim
         self.out_position = out_position
         self.boundary = boundary
 
         self.network = CustomTTN(
             sequence_length = sequence_length,
             local_dim = local_dim,
-            bond_dim = bound_dim,
+            bond_dim = bond_dim,
             n_classes = n_classes,
             out_position = out_position,
             boundary = boundary,
         )
-        self.classifier = nn.Linear(bound_dim, n_classes)
+        self.classifier = nn.Linear(bond_dim, n_classes)
     
-    def forward(self, x):
-        root_vec = self.network(x)
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        root_vec = self.network(x) # deberia obtener un tensor [B, bond_dim]
         return self.classifier(root_vec)

@@ -25,6 +25,7 @@ class ModelConfig:
     out_position: int | None = None
     boundary: str = "obc"
     patch_size: int | None = None
+    linearization_order: str = "zigzag" # "row" o "zigzag"
 
 @dataclass(slots=True)
 class TrainingConfig:
