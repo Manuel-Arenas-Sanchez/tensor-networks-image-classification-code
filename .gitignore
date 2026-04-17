@@ -18,3 +18,8 @@ src/tn_dl.egg-info/PKG-INFO
 src/tn_dl.egg-info/requires.txt
 src/tn_dl.egg-info/SOURCES.txt
 src/tn_dl.egg-info/top_level.txt
+Chat_largo.txt
+Context.txt
+debug_ttn.py
+errores.txt
+.DS_Store

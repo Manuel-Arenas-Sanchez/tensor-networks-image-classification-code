@@ -45,26 +45,62 @@ class CustomTTN(tk.TensorNetwork):
         prefix: str,
     ):
         """
-        Aquí contruyo la MPS base.
+        Contruyo un bloque base MPS con 3 nodos entrenables.
+
+        Cada nodo es un tk.ParamNode: su tensor se registra como nn.Parameter del tk.TensorNetwork
+        padre (self), de modo que:
+            - queda materializado desde la construción (evitamos los None)
+            - aparece en el model,parameters() automáticamente
+            - no recibe gradientes en el backward
+
+        Estructura interna:
+            left: (bond, input)                         - axes (right, input)
+            center: (bond, bond, input, output)         - axes (left, right, input, output)
+            right: (bond, input)                        - axes (left, input)
+        
+        Bond internos:
+            left["right"] ^ center["left"]
+            center["right"] ^ right["left"]
+        
+        Edges libres del bloque:
+          - 3 edges "input"  (uno por nodo) -> se enchufan a data_nodes / outputs
+            del nivel anterior / nodos de padding en _connect_levels y
+            set_data_nodes.
+          - 1 edge "output"  en el center   -> sube al nivel siguiente, o es la
+            raiz si no hay mas niveles.
+
+        Inicializacion:
+            init_method="randn", std=INIT_STD. Misma estrategia que la MPSLayer de
+            referencia del repo (ver src/tn_dl/layers/mps.py). Un std pequeno
+            (~0.02) mantiene las contracciones numericamente estables al subir
+            niveles.
         """
-        left_node = tk.Node(
+        init_std = 0.02
+
+        left_node = tk.ParamNode(
             shape = (self.bond_dim ,input_dim),
             axes_names = ("right", "input"),
             name = f"{prefix}_left",
             network = self,
+            init_method = "randn",
+            std = init_std,
         )
 
-        center_node = tk.Node(
+        center_node = tk.ParamNode(
             shape = (self.bond_dim, self.bond_dim, input_dim, output_dim),
             axes_names = ("left", "right", "input", "output"),
             name = f"{prefix}_center",
             network = self,
+            init_method = "randn",
+            std = init_std,
         )
-        right_node = tk.Node(
+        right_node = tk.ParamNode(
             shape = (self.bond_dim, input_dim),
             axes_names = ("left", "input"),
             name = f"{prefix}_right",
             network = self,
+            init_method = "randn",
+            std = init_std,
         )
 
         left_node["right"] ^ center_node["left"]
@@ -218,25 +254,40 @@ class CustomTTN(tk.TensorNetwork):
         Aquí se ejecutan las contracciones del árbol completo, de leaves a raíz.
 
         Para cada bloque se contraen internamente los 3 nodos MPS (left, center, right) junto con
-        sus "vecinos" sobre el edge input:
-            - Nivel 0, posición real:      vecino = data_node (creado por set_data_nodes).
-            - Nivel 0, posición padding:   vecino = nodo de padding constante.
-            - Nivel k>0, posicion real:    vecino = output contraido del bloque del nivel k-1.
-            - Nivel k>0, posición padding: vecino = nodo de padding constante.
-        
-        En todos los casos TensorKrowch ya ha conectado el edge input con ese vecino en
-        connect_levels o en set_data_nodes, así que solo hay que hacer las contracciones.
+        sus "vecinos" sobre el edge input.
+
+        Nivel 0:
+            - Los vecinos son data_nodes (reales) o padding_nodes, ya enchufados
+            por set_data_nodes / _connect_levels.
+            - _contract_block los descubre vía neighbours("input").
+
+        Niveles > 0:
+            - Los vecinos son los composites del nivel anterior + los padding_nodes
+              del nivel actual.
+            - Hay que pasarlos EXPLICITAMENTE a _contract_block, porque
+              left.neighbours("input") seguiría devolviendo el center original del
+              nivel anterior (TK no reruta .node1/.node2 al crear el composite);
+              pero el @ sobre el composite sí detecta el edge compartido porque el
+              composite heredó la misma referencia de edge (ver TK
+              operations.py:3961 — new_edges.append(nodes[i][idx])).
         """
+        # NIVEL 0
         current_outputs = []
 
         for block in self.blocks_by_level[0]:
             current_outputs.append(self._contract_block(block))
         
 
+        # NIVELES > 0
         for level_idx in range(1, len(self.blocks_by_level)):
+            level_blocks = self.blocks_by_level[level_idx]
+            level_padding = self.padding_nodes_by_level[level_idx]
+            all_partners = list(current_outputs) + list(level_padding)
+
             next_outputs = []
-            for block in self.blocks_by_level[level_idx]:
-                next_outputs.append(self._contract_block(block))
+            for block_idx, block in enumerate(level_blocks):
+                block_partners = all_partners[3 * block_idx : 3 * block_idx + 3]
+                next_outputs.append(self._contract_block(block, partners = block_partners))
             current_outputs = next_outputs
         
         assert len(current_outputs) == 1, (
@@ -244,36 +295,35 @@ class CustomTTN(tk.TensorNetwork):
         )
         root_node = current_outputs[0]
         self.root_node = root_node
-
-        # La raiz debe de estar en formato de Pytorch y no de TK.
-        root_tensor = root_node.tensor
-
-        return root_tensor
+        return root_node
     
-    def _contract_block(self, block):
+    def _contract_block(self, block, partners = None):
         """
-        Contrae un bloque MPS de 3 nodos absorbiendo el vecino que esté encganchado a cada edge
-        input. Devuelve el nodo resultante, que tiene un único edge libre: el "output" del
-        center_node.
+        Contrae un bloque MPS-3 absorbiendo a sus 3 vecinos sobre el edge input.
+        Devuelve el nodo resultante con un unico edge libre: el "output" del center.
+
+        Si partners es None (nivel 0), se descubren vía neighbours("input").
+        Si partners se pasa explicitamente (niveles > 0), se usa tal cual, porque
+        neighbours() en esos niveles devuelve los nodos originales del nivel
+        anterior, NO los composites.
         """
         left, center, right = block["nodes"]
 
         # Nota TK: node.neighbours(axis_name) devuelve el nodo conectado al edge con ese nombre de 
         # eje. Si la versión de TensorKrowch expone otra API para acceder al vecino 
         # (p. ej. left["input"].node2 o similar), habrá que ajustarlo aquí.
-
-        partner_left = left.neighbours("input")
-        partner_center = center.neighbours("input")
-        partner_right = right.neighbours("input")
-
-        #Contraer cada nodo MPS con su vecino sobre el edge "input".
+        if partners is None:
+            partner_left = left.neighbours("input")
+            partner_center = center.neighbours("input")
+            partner_right = right.neighbours("input")
+        else:
+            partner_left, partner_center, partner_right = partners
+        
         L = left @ partner_left
         C = center @ partner_center
         R = right @ partner_right
 
-        out = L @ C @ R
-        return out
-
+        return L @ C @ R
 
 class MPSClassifier_1(BaseTensorNetworkLayer):
     def __init__(
