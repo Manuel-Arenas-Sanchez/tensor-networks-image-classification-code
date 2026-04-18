@@ -2,8 +2,6 @@ from dataclasses import dataclass
 
 from torch.utils.data import DataLoader
 
-import tn_dl.data.flowers
-
 
 @dataclass
 class DataLoaders:
@@ -15,6 +13,7 @@ def build_dataloaders(data_config):
     dataset_name = data_config.dataset.lower()
 
     if dataset_name == "flowers":
-        return tn_dl.data.flowers.build_flowers_dataloaders(data_config)
+        from tn_dl.data import flowers
+        return flowers.build_flowers_dataloaders(data_config)
     
     raise ValueError(f"Unsupported dataset '{data_config.dataset}'")

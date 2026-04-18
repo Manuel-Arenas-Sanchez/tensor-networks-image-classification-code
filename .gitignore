@@ -23,3 +23,5 @@ Context.txt
 debug_ttn.py
 errores.txt
 .DS_Store
+.claude/
+flower_data/
