@@ -4,7 +4,7 @@ Bachelor's Thesis (TFG) project exploring **Tensor Networks** as an alternative 
 
 The **Oxford Flowers 102** dataset is used as a preliminary benchmark before migrating to domain-specific laboratory imaging data.
 
-> **Status:** active development. The reference MPS baseline is working end-to-end and the custom hierarchical TTN (`CustomTTN`) is forward+backward validated on synthetic batches for sequence lengths `L ∈ {9, 27, 196}`. Pending work: end-to-end training run with `layer_name: custom_ttn` on Flowers 102 and a benchmark against the MPS baseline.
+> **Status:** active development. The reference MPS baseline and the custom hierarchical TTN (`CustomTTN`) both run end-to-end on Flowers 102 via the same training engine. Current focus: longer training runs on `CustomTTN` and a like-for-like benchmark against the MPS baseline.
 
 ---
 
@@ -29,7 +29,9 @@ The **Oxford Flowers 102** dataset is used as a preliminary benchmark before mig
 - [x] Zigzag (boustrophedon) linearization available in both `TrigPixelEmbedding` and `PatchEmbedding` via an `order` flag, surfaced through `ModelConfig.linearization_order`.
 - [x] `build_model(...)` routes `layer_name: custom_ttn` to the custom TTN wrapper (`MPSClassifier_1`).
 - [x] CustomTTN forward + backward validated on synthetic batches for `L ∈ {9, 27, 196}`, with every parameter receiving gradients.
-- [ ] End-to-end training run (1–2 epochs) with `layer_name: custom_ttn` on Flowers 102 (PatchEmbedding, `patch_size=16`, `L=196`).
+- [x] End-to-end training run with `layer_name: custom_ttn` on Flowers 102 (PatchEmbedding, `patch_size=16`, `L=196`) validated on a 2-epoch smoke test.
+- [x] Automatic download of Oxford Flowers 102 with two-layer idempotency (skips entirely if the dataset is already present, only fetches missing pieces otherwise).
+- [ ] Long training run on `CustomTTN` (`epochs=20`, `bond_dim=8`) for a real convergence curve.
 - [ ] Benchmark `CustomTTN` vs. reference MPS baseline on Flowers 102.
 - [ ] Scale to the raw `TrigPixelEmbedding` regime (`L = C·H·W = 150 528`): evaluate migrating the contraction loop to the `op.stack` / `op.unbind` pattern used by `tensorkrowch.models.Tree`.
 - [ ] Migration to laboratory imaging datasets.
@@ -164,10 +166,14 @@ Install the package (Python 3.11 or 3.12):
 pip install -e .
 ```
 
-Train with a YAML experiment config:
+Train with a YAML experiment config. Two experiments are provided out of the box:
 
 ```bash
+# Reference MPS baseline
 python -m tn_dl.cli.train --config configs/experiments/flowers_mps.yaml
+
+# Custom hierarchical TTN
+python -m tn_dl.cli.train --config configs/experiments/flowers_custom_ttn.yaml
 ```
 
 Evaluate a checkpoint:
@@ -184,7 +190,7 @@ Runtime overrides (device, output directory, runtime YAML, resume checkpoint) ar
 
 ## Configuration Example
 
-`configs/experiments/flowers_mps.yaml` (patch embedding):
+`configs/experiments/flowers_mps.yaml` (patch embedding, reference MPS). An analogous `configs/experiments/flowers_custom_ttn.yaml` ships with `layer_name: custom_ttn` for the hierarchical TTN backend.
 
 ```yaml
 name: flowers_mps
@@ -226,7 +232,9 @@ With `patch_size=16` and `input_shape=[3,224,224]`, the resulting sequence has `
 
 ## Dataset
 
-The Oxford Flowers 102 dataset must be placed under `data_dir` with the following layout:
+When `data.download: true` is set in the YAML (the default for `flowers_custom_ttn.yaml`), the Oxford Flowers 102 dataset is downloaded automatically on first run into `data_dir`. The download is idempotent: if the dataset is already present it is skipped entirely, and if only part is missing (e.g. `imagelabels.mat` exists but images are gone) only the missing pieces are fetched.
+
+Alternatively, the dataset can be placed manually under `data_dir` with the following layout:
 
 ```
 flower_data/
@@ -234,7 +242,7 @@ flower_data/
 └── imagelabels.mat
 ```
 
-Available at <https://www.robots.ox.ac.uk/~vgg/data/flowers/102/>.
+Source: <https://www.robots.ox.ac.uk/~vgg/data/flowers/102/>.
 
 ---
 
@@ -246,7 +254,7 @@ Available at <https://www.robots.ox.ac.uk/~vgg/data/flowers/102/>.
 - PyYAML for configuration
 - pytest + ruff (dev dependencies)
 
-> **macOS Intel note:** PyTorch stopped publishing x86_64 wheels after 2.2.2. On Intel Macs, `pyproject.toml` cannot be satisfied directly; install the pinned stack manually (`torch==2.2.2`, `torchvision==0.17.2`, `tensorkrowch==1.1.6`, `numpy<2`) and then `pip install -e . --no-deps`. The project code is kept compatible with both torch 2.2.2 and torch 2.8.
+> **macOS Intel note:** PyTorch stopped publishing x86_64 wheels after 2.2.2. On Intel Macs, `pyproject.toml` cannot be satisfied directly; install the pinned stack manually (`torch==2.2.2`, `torchvision==0.17.2`, `tensorkrowch==1.1.6`, `numpy<2`, `scipy`, `PyYAML`, `pytest`, `ruff`) and then `pip install -e . --no-deps`. `scipy` is required at runtime by `OxfordFlowersDataset` to read `imagelabels.mat` and is easy to miss when using `--no-deps`. The project code is kept compatible with both torch 2.2.2 and torch 2.8.
 
 ---
 
@@ -260,4 +268,4 @@ Universidad Europea de Madrid · Internship at ITCL
 
 ## Notes
 
-This repository is continuously updated as the project evolves. The current focus is running the first end-to-end training with `layer_name: custom_ttn` on Flowers 102 and benchmarking it against the reference MPS baseline, followed by scaling the contraction loop to handle the raw `TrigPixelEmbedding` regime (`L = 150 528`).
+This repository is continuously updated as the project evolves. The first end-to-end training run with `layer_name: custom_ttn` on Flowers 102 is now green. The current focus is launching a longer `CustomTTN` run (`epochs=20`, `bond_dim=8`) for a real convergence curve and benchmarking it against the reference MPS baseline, followed by scaling the contraction loop to handle the raw `TrigPixelEmbedding` regime (`L = 150 528`).
