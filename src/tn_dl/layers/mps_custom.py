@@ -43,6 +43,7 @@ class CustomTTN(tk.TensorNetwork):
         input_dim: int,
         output_dim: int,
         prefix: str,
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     ):
         """
         Contruyo un bloque base MPS con 3 nodos entrenables.
@@ -84,6 +85,7 @@ class CustomTTN(tk.TensorNetwork):
             network = self,
             init_method = "randn",
             std = init_std,
+            device = device,
         )
 
         center_node = tk.ParamNode(
@@ -93,6 +95,7 @@ class CustomTTN(tk.TensorNetwork):
             network = self,
             init_method = "randn",
             std = init_std,
+            device = device,
         )
         right_node = tk.ParamNode(
             shape = (self.bond_dim, input_dim),
@@ -101,6 +104,7 @@ class CustomTTN(tk.TensorNetwork):
             network = self,
             init_method = "randn",
             std = init_std,
+            device = device,
         )
 
         left_node["right"] ^ center_node["left"]
@@ -125,7 +129,7 @@ class CustomTTN(tk.TensorNetwork):
         gradientes. El tensor se inicializa a [1, 0, ..., 0], un vector neutro no-nulo para no
         colapsar el bloque a cero.
         """
-
+        device = torch,device("cuda" if torch.cuda.is_available() else "cpu")
         node = tk.Node(
             shape = (dim,),
             axes_names = ("output",),
@@ -136,23 +140,6 @@ class CustomTTN(tk.TensorNetwork):
         neutral[0] = 1.0
         node.tensor = neutral
         return node
-    
-    def _move_padding_nodes_to(self, x: torch.Tensor) -> None:
-        """
-        Los padding nodes son tk.Node con tensor fijo y no nn.Parameter. Por eso model.to(device)
-        no los mueve automáticamente. Antes de contraer, los ponemos en el mismo device/dtype que la
-        entrada.
-        """
-        for level_padding in self.padding_nodes_by_level:
-            for pad_node in level_padding:
-                if pad_node.tensor is None:
-                    raise RuntimeError(
-                        f"Padding node {pad_node.name} has no tensor materialized"
-                    )
-                if pad_node.tensor.device != x.device or pad_node.tensor.dtype != x.dtype:
-                    pad_node.tensor = pad_node.tensor.to(
-                    device = x.device,
-                    dtype = x.dtype)
 
     def _build_tree(self) -> None:
         """
@@ -371,7 +358,6 @@ class MPSClassifier_1(BaseTensorNetworkLayer):
         self.classifier = nn.Linear(bond_dim, n_classes)
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        self.network._move_padding_nodes_to(x)
         root_vec = self.network(x)  # deberia obtener un tensor [B, bond_dim]
         return self.classifier(root_vec)
 
