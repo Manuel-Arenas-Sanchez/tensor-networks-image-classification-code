@@ -43,7 +43,6 @@ class CustomTTN(tk.TensorNetwork):
         input_dim: int,
         output_dim: int,
         prefix: str,
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     ):
         """
         Contruyo un bloque base MPS con 3 nodos entrenables.
@@ -85,7 +84,6 @@ class CustomTTN(tk.TensorNetwork):
             network = self,
             init_method = "randn",
             std = init_std,
-            device = device,
         )
 
         center_node = tk.ParamNode(
@@ -95,7 +93,6 @@ class CustomTTN(tk.TensorNetwork):
             network = self,
             init_method = "randn",
             std = init_std,
-            device = device,
         )
         right_node = tk.ParamNode(
             shape = (self.bond_dim, input_dim),
@@ -104,7 +101,6 @@ class CustomTTN(tk.TensorNetwork):
             network = self,
             init_method = "randn",
             std = init_std,
-            device = device,
         )
 
         left_node["right"] ^ center_node["left"]
@@ -129,16 +125,16 @@ class CustomTTN(tk.TensorNetwork):
         gradientes. El tensor se inicializa a [1, 0, ..., 0], un vector neutro no-nulo para no
         colapsar el bloque a cero.
         """
-        device = torch,device("cuda" if torch.cuda.is_available() else "cpu")
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        neutral = torch.zeros(dim, device = device)
+        neutral[0] = 1.0
         node = tk.Node(
             shape = (dim,),
             axes_names = ("output",),
             name = name,
             network = self,
+            tensor = neutral
         )
-        neutral = torch.zeros(dim)
-        neutral[0] = 1.0
-        node.tensor = neutral
         return node
 
     def _build_tree(self) -> None:
