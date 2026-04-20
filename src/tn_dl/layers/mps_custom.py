@@ -150,7 +150,9 @@ class CustomTTN(tk.TensorNetwork):
                         f"Padding node {pad_node.name} has no tensor materialized"
                     )
                 if pad_node.tensor.device != x.device or pad_node.tensor.dtype != x.dtype:
-                    pad_node.tensor = pad_node.tensor.to(device = x.device, dtype = x.dtype)
+                    pad_node.tensor = pad_node.tensor.to(
+                    device = x.device,
+                    dtype = x.dtype)
 
     def _build_tree(self) -> None:
         """
@@ -370,5 +372,6 @@ class MPSClassifier_1(BaseTensorNetworkLayer):
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         self.network._move_padding_nodes_to(x)
-        root_vec = self.network(x) # deberia obtener un tensor [B, bond_dim]
+        root_vec = self.network(x)  # deberia obtener un tensor [B, bond_dim]
         return self.classifier(root_vec)
+
