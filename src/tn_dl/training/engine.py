@@ -9,6 +9,7 @@ from torch import nn
 from tn_dl.config import ExperimentConfig
 from tn_dl.data import build_dataloaders
 from tn_dl.models import build_model
+from tn_dl.training.loss_tracker import LossTracker
 from tn_dl.utils.device import resolve_device
 from tn_dl.utils.io import create_run_dir, write_metrics_csv, write_yaml_file
 from tn_dl.utils.seed import seed_everything
@@ -19,6 +20,7 @@ class TrainingArtifacts:
     run_dir: Path
     best_checkpoint: Path
     metrics_path: Path
+    loss_plot_path: Path
     resolved_config_path: Path
 
 
@@ -43,7 +45,13 @@ def train(config: ExperimentConfig) -> TrainingArtifacts:
     run_dir = _prepare_run_dir(config)
     checkpoint_path = run_dir / config.io.checkpoint_name
     metrics_path = run_dir / config.io.metrics_name
+    loss_plot_path = run_dir / "loss_curve.png"
     resolved_config_path = run_dir / config.io.resolved_config_name
+
+    loss_tracker = LossTracker(
+        metrics_path = metrics_path,
+        plot_path= loss_plot_path,
+    )
     write_yaml_file(resolved_config_path, asdict(config))
 
     start_epoch = 0
@@ -71,14 +79,14 @@ def train(config: ExperimentConfig) -> TrainingArtifacts:
             criterion=criterion,
             device=device,
         )
-        rows.append(
-            {
-                "epoch": epoch + 1,
-                "train_loss": train_loss,
-                "eval_loss": eval_metrics.loss,
-                "eval_accuracy": eval_metrics.accuracy,
-            }
+        
+        loss_tracker.record_epoch(
+            epoch = epoch + 1,
+            train_loss = train_loss,
+            eval_loss = eval_metrics.loss,
+            eval_accuracy = eval_metrics.accuracy,
         )
+
         if eval_metrics.accuracy >= best_accuracy:
             best_accuracy = eval_metrics.accuracy
             _save_checkpoint(
@@ -88,12 +96,12 @@ def train(config: ExperimentConfig) -> TrainingArtifacts:
                 epoch=epoch + 1,
                 best_accuracy=best_accuracy,
             )
-
-    write_metrics_csv(metrics_path, rows)
+            
     return TrainingArtifacts(
         run_dir=run_dir,
         best_checkpoint=checkpoint_path,
         metrics_path=metrics_path,
+        loss_plot_path=loss_plot_path,
         resolved_config_path=resolved_config_path,
     )
 
