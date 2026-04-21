@@ -136,6 +136,19 @@ class CustomTTN(tk.TensorNetwork):
         neutral[0] = 1.0
         node.tensor = neutral
         return node
+    
+    def _sync_padding_nodes_device(self) -> None:
+        """
+        Es un helper para moder los nodos padding a gpu, cuando quiero ejecutar el entrenamiento en
+        gpu. Porque si no van directamente a cpu.
+        """
+        reference = next(self.parameters())
+        for level_padding in self.padding_nodes_by_level:
+            for pad_node in level_padding:
+                pad_node.tensor = pad_node.tensor.to(
+                    device = reference.device,
+                    dtype = reference.dtype
+                )
 
     def _build_tree(self) -> None:
         """
@@ -271,6 +284,8 @@ class CustomTTN(tk.TensorNetwork):
               composite heredó la misma referencia de edge (ver TK
               operations.py:3961 — new_edges.append(nodes[i][idx])).
         """
+        self._sync_padding_nodes_device()
+
         # NIVEL 0
         current_outputs = []
 
