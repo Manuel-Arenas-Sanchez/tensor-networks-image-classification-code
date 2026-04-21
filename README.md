@@ -31,6 +31,7 @@ The **Oxford Flowers 102** dataset is used as a preliminary benchmark before mig
 - [x] CustomTTN forward + backward validated on synthetic batches for `L ∈ {9, 27, 196}`, with every parameter receiving gradients.
 - [x] End-to-end training run with `layer_name: custom_ttn` on Flowers 102 (PatchEmbedding, `patch_size=16`, `L=196`) validated on a 2-epoch smoke test.
 - [x] Automatic download of Oxford Flowers 102 with two-layer idempotency (skips entirely if the dataset is already present, only fetches missing pieces otherwise).
+- [x] Loss tracking utility that writes `metrics.csv` and `loss_curve.png` for train/eval loss monitoring across epochs.
 - [ ] Long training run on `CustomTTN` (`epochs=20`, `bond_dim=8`) for a real convergence curve.
 - [ ] Benchmark `CustomTTN` vs. reference MPS baseline on Flowers 102.
 - [ ] Scale to the raw `TrigPixelEmbedding` regime (`L = C·H·W = 150 528`): evaluate migrating the contraction loop to the `op.stack` / `op.unbind` pattern used by `tensorkrowch.models.Tree`.
@@ -48,7 +49,7 @@ src/tn_dl/
 ├── embeddings/     # TrigPixelEmbedding, PatchEmbedding
 ├── layers/         # Reference MPS layer + custom TTN prototype + TN base class
 ├── models/         # ImageClassifier + build_model factory
-├── training/       # Training loop, evaluation, checkpointing
+├── training/       # Training loop, evaluation, checkpointing, loss tracking
 └── utils/          # Device, I/O, seeding helpers
 
 configs/
@@ -71,7 +72,7 @@ scripts/            # Local + SLURM launch scripts
 4. **Tensor network layer** — consumes the embedded sequence and produces class logits. Two backends are wired into the factory:
    - `layer_name: mps` → reference Matrix Product State (`tensorkrowch.models.MPSLayer`), the default baseline.
    - `layer_name: custom_ttn` → `CustomTTN`, a hierarchical 3-to-1 tree tensor network built from 3-node MPS blocks.
-5. **Training** — AdamW optimizer, cross-entropy loss, best-checkpoint saving by validation accuracy. Per-epoch metrics are written to CSV.
+5. **Training** — AdamW optimizer, cross-entropy loss, best-checkpoint saving by validation accuracy. Per-epoch metrics are written to CSV and train/eval loss curves are exported as `loss_curve.png`.
 
 ---
 
@@ -186,6 +187,13 @@ python -m tn_dl.cli.eval \
 
 Runtime overrides (device, output directory, runtime YAML, resume checkpoint) are available as CLI flags.
 
+Each run directory contains:
+
+- `best.pt`: best checkpoint by validation accuracy.
+- `metrics.csv`: epoch-level train loss, eval loss and eval accuracy.
+- `loss_curve.png`: train/eval loss plot generated after each epoch.
+- `config.yaml`: resolved experiment configuration.
+
 ---
 
 ## Configuration Example
@@ -252,6 +260,7 @@ Source: <https://www.robots.ox.ac.uk/~vgg/data/flowers/102/>.
 - PyTorch ≥ 2.8, TorchVision ≥ 0.26 (Windows / Linux)
 - [TensorKrowch](https://github.com/joserapa98/tensorkrowch) ≥ 1.1.6 (reference MPS + `CustomTTN` backbone)
 - PyYAML for configuration
+- Matplotlib for loss-curve visualization
 - pytest + ruff (dev dependencies)
 
 > **macOS Intel note:** PyTorch stopped publishing x86_64 wheels after 2.2.2. On Intel Macs, `pyproject.toml` cannot be satisfied directly; install the pinned stack manually (`torch==2.2.2`, `torchvision==0.17.2`, `tensorkrowch==1.1.6`, `numpy<2`, `scipy`, `PyYAML`, `pytest`, `ruff`) and then `pip install -e . --no-deps`. `scipy` is required at runtime by `OxfordFlowersDataset` to read `imagelabels.mat` and is easy to miss when using `--no-deps`. The project code is kept compatible with both torch 2.2.2 and torch 2.8.
@@ -268,4 +277,4 @@ Universidad Europea de Madrid · Internship at ITCL
 
 ## Notes
 
-This repository is continuously updated as the project evolves. The first end-to-end training run with `layer_name: custom_ttn` on Flowers 102 is now green. The current focus is launching a longer `CustomTTN` run (`epochs=20`, `bond_dim=8`) for a real convergence curve and benchmarking it against the reference MPS baseline, followed by scaling the contraction loop to handle the raw `TrigPixelEmbedding` regime (`L = 150 528`).
+This repository is continuously updated as the project evolves. The first end-to-end training run with `layer_name: custom_ttn` on Flowers 102 is now green, and each training run now exports both tabular metrics and a visual train/eval loss curve for easier TFG analysis. The current focus is launching a longer `CustomTTN` run (`epochs=20`, `bond_dim=8`) for a real convergence curve and benchmarking it against the reference MPS baseline, followed by scaling the contraction loop to handle the raw `TrigPixelEmbedding` regime (`L = 150 528`).
