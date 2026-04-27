@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -11,9 +12,10 @@ from tn_dl.data import build_dataloaders
 from tn_dl.models import build_model
 from tn_dl.training.loss_tracker import LossTracker
 from tn_dl.utils.device import resolve_device
-from tn_dl.utils.io import create_run_dir, write_metrics_csv, write_yaml_file
+from tn_dl.utils.io import create_run_dir, write_yaml_file
 from tn_dl.utils.seed import seed_everything
 
+logger = logging.getLogger(__name__)
 
 @dataclass(slots=True)
 class TrainingArtifacts:
@@ -32,10 +34,35 @@ class EvalMetrics:
 
 def train(config: ExperimentConfig) -> TrainingArtifacts:
     seed_everything(config.seed)
+    logger.info("Seed fijada: %s", config.seed)
+
     device = resolve_device(config.device)
+    logger.info("Device seleccionado: %s", device)
+
+    logger.info(
+        "Cargando dataset '%s' desde %s...",
+        config.data.dataset,
+        config.data.data_dir,
+    )
     dataloaders = build_dataloaders(config.data)
+    logger.info(
+        "DataLoaders listos: train_batches = %s, eval_batches = %s",
+        len(dataloaders.train_loader),
+        len(dataloaders.eval_loader),
+    )
+
+    logger.info(
+        "Construyendo el modelo: embedding = %s, layer = %s, bond_dim = %s",
+        config.model.embedding_name,
+        config.model.layer_name,
+        config.model.bond_dim,
+    )
     model = build_model(config.model).to(device)
+
+    logger.info("Inicializando modelo con dummy batch...")
     _prime_model(model, config, device)
+    logger.info("Modelo listo")
+
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=config.training.learning_rate,
@@ -47,6 +74,10 @@ def train(config: ExperimentConfig) -> TrainingArtifacts:
     metrics_path = run_dir / config.io.metrics_name
     loss_plot_path = run_dir / "loss_curve.png"
     resolved_config_path = run_dir / config.io.resolved_config_name
+
+    logger.info("Run directory: %s", run_dir)
+    logger.info("Metrics path: %s", metrics_path)
+    logger.info("Checkpoint path: %s", checkpoint_path)
 
     loss_tracker = LossTracker(
         metrics_path = metrics_path,
@@ -64,14 +95,20 @@ def train(config: ExperimentConfig) -> TrainingArtifacts:
             device=device,
         )
 
-    rows: list[dict[str, float | int]] = []
     for epoch in range(start_epoch, config.training.epochs):
+        logger.info(
+            "Epoch %s/%s: entrenamiento iniciado",
+            epoch + 1,
+            config.training.epochs,
+        )
+
         train_loss = _run_training_epoch(
             model=model,
             dataloader=dataloaders.train_loader,
             criterion=criterion,
             optimizer=optimizer,
             device=device,
+            log_every_n_steps = config.training.log_every_n_steps,
         )
         eval_metrics = _run_evaluation(
             model=model,
@@ -80,6 +117,15 @@ def train(config: ExperimentConfig) -> TrainingArtifacts:
             device=device,
         )
         
+        logger.info(
+            "Epoch %s/%s finalizada: train_loss = %.6f, eval_loss = %.6f, eval_accuracy = %.4f",
+            epoch + 1,
+            config.training.epochs,
+            train_loss,
+            eval_metrics.loss,
+            eval_metrics.accuracy,
+        )
+
         loss_tracker.record_epoch(
             epoch = epoch + 1,
             train_loss = train_loss,
@@ -95,6 +141,10 @@ def train(config: ExperimentConfig) -> TrainingArtifacts:
                 optimizer=optimizer,
                 epoch=epoch + 1,
                 best_accuracy=best_accuracy,
+            )
+            logger.info(
+                "Nuevo mejor checkpoint guardado con eval_accuracy = %.4f",
+                best_accuracy,
             )
             
     return TrainingArtifacts(
@@ -143,11 +193,13 @@ def _run_training_epoch(
     criterion: nn.Module,
     optimizer: torch.optim.Optimizer,
     device: torch.device,
+    log_every_n_steps: int,
 ) -> float:
     model.train()
     total_loss = 0.0
     total_items = 0
-    for images, labels in dataloader:
+    num_batches = len(dataloader)
+    for step, (images, labels) in enumerate(dataloader, start = 1):
         images = images.to(device)
         labels = labels.to(device=device, dtype=torch.long)
         optimizer.zero_grad(set_to_none=True)
@@ -158,6 +210,16 @@ def _run_training_epoch(
         batch_size = labels.size(0)
         total_loss += loss.item() * batch_size
         total_items += batch_size
+        if log_every_n_steps > 0 and (
+            step == 1 or step % log_every_n_steps == 0 or step == num_batches
+        ):
+            running_loss = total_loss / max(total_items, 1)
+            logger.info(
+                "Batch %s/%s: running_loss = %.6f",
+                step,
+                num_batches,
+                running_loss,
+            )
     return total_loss / max(total_items, 1)
 
 

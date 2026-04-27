@@ -76,13 +76,14 @@ def _parse_model_config(payload: dict[str, Any]) -> ModelConfig:
     return ModelConfig(
         embedding_name=_require_str(payload, "embedding_name"),
         layer_name=_require_str(payload, "layer_name"),
-        input_shape=_require_int_tuple(payload, "input_shape", expected_length=3),
+        input_shape=_require_input_shape(payload, "input_shape"),
         local_dim=_require_int(payload, "local_dim"),
         bond_dim=_require_int(payload, "bond_dim"),
         n_classes=_require_int(payload, "n_classes"),
         out_position=_optional_int(payload.get("out_position")),
         boundary=str(payload.get("boundary", "obc")),
         patch_size=_optional_int(payload.get("patch_size")),
+        linearization_order = _parse_linearization_order(payload.get("linearization_order")),
     )
 
 
@@ -123,6 +124,13 @@ def _parse_runtime_config(payload: dict[str, Any]) -> RuntimeConfig:
         ),
     )
 
+def _require_input_shape(payload: dict[str, Any], key: str) -> tuple[int, int, int]:
+    value = payload.get(key)
+    if not isinstance(value, list) or len(value) != 3:
+        raise ValueError(f"Expected '{key}' to be a list with 3 integers.")
+    if not all(isinstance(item, int) for item in value):
+        raise ValueError(f"Expected '{key}' to contain only integers.")
+    return value[0], value[1], value[2]
 
 def _require_mapping(
     payload: dict[str, Any],
@@ -167,20 +175,15 @@ def _optional_str(value: Any) -> str | None:
         raise ValueError("Expected a string or null value.")
     return value
 
-
-def _require_int_tuple(
-    payload: dict[str, Any],
-    key: str,
-    *,
-    expected_length: int,
-) -> tuple[int, ...]:
-    value = payload.get(key)
-    if not isinstance(value, list) or len(value) != expected_length:
-        raise ValueError(f"Expected '{key}' to be a list with {expected_length} integers.")
-    if not all(isinstance(item, int) for item in value):
-        raise ValueError(f"Expected '{key}' to contain only integers.")
-    return tuple(value)
-
+def _parse_linearization_order(value: Any) -> str:
+    if value is None:
+        return "zigzag"
+    if not isinstance(value, str):
+        raise ValueError("Expected 'linearization_order' to be a string.")
+    normalized = value.lower()
+    if normalized not in ("row", "zigzag"):
+        raise ValueError("Expected 'linearization_order' to be 'row' or 'zigzag'.")
+    return normalized
 
 def _raise_missing(key: str) -> dict[str, Any]:
     raise ValueError(f"Missing '{key}' in configuration.")

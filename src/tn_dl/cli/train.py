@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 from dataclasses import replace
 from pathlib import Path
 
@@ -9,6 +10,11 @@ from tn_dl.training import train
 
 
 def main() -> None:
+    logging.basicConfig(
+        level = logging.INFO,
+    format = "%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+    datefmt= "%H:%M:%S:",
+    )
     args = _build_parser().parse_args()
     experiment = load_experiment_config(args.config)
     runtime = load_runtime_config(args.runtime) if args.runtime is not None else experiment.runtime

@@ -22,9 +22,9 @@ model:
 
 training:
   epochs: 20
-  learning_rate: 0.0005
-  weight_decay: 0.0
-  log_every_n_steps: 10
+  learning_rate: 0.001
+  weight_decay: 0.0005
+  log_every_n_steps: 50
 
 io:
   root_dir: runs

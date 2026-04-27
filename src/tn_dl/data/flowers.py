@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import tarfile
 import urllib.request
@@ -12,6 +13,7 @@ from PIL import Image
 
 from tn_dl.data import DataLoaders
 
+logger = logging.getLogger(__name__)
 
 class OxfordFlowersDataset(torch.utils.data.Dataset):
     """
@@ -105,6 +107,7 @@ def build_flowers_dataset(data_config):
         root_dir=data_config.data_dir,
         transform=transform,
     )
+    logger.info("Dataset Flowers cargado correctamente: %s imágenes", len(dataset))
     return dataset
 
 def build_flowers_dataloaders(data_config):
@@ -122,4 +125,11 @@ def build_flowers_dataloaders(data_config):
     eval_loader = torch.utils.data.DataLoader(eval_dataset, batch_size=data_config.batch_size, shuffle=False, num_workers=data_config.num_workers)
     test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=data_config.batch_size, shuffle=False, num_workers=data_config.num_workers)
 
+    logger.info(
+        "Split Flowers creado: train = %s, eval = %s, test = %s, batch_size = %s",
+        train_size,
+        eval_size,
+        test_size,
+        data_config.batch_size,
+    )
     return DataLoaders(train_loader=train_loader, eval_loader=eval_loader, test_loader=test_loader)
