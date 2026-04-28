@@ -1,180 +1,324 @@
-# Tensor Network-Based Machine Learning — Flowers Benchmark
+# Tensor Network-Based Machine Learning - Flowers Benchmark
 
-Bachelor's Thesis (TFG) project exploring **Tensor Networks** as an alternative to classical deep learning models for image classification.
+Bachelor's Thesis (TFG) project exploring tensor-network-based machine learning
+for image classification.
 
-The **Oxford Flowers 102** dataset is used as a preliminary benchmark before migrating to domain-specific laboratory imaging data.
+The current benchmark is Oxford Flowers 102. The long-term goal is to use this
+benchmark to validate the pipeline, architectures and methodology before moving
+to domain-specific laboratory imaging data.
 
-> **Status:** active development. The reference MPS baseline and the custom hierarchical TTN (`CustomTTN`) both run end-to-end on Flowers 102 via the same training engine. Current focus: longer training runs on `CustomTTN` and a like-for-like benchmark against the MPS baseline.
+## Current Status
 
----
+The repository contains an end-to-end training pipeline for Flowers 102 with:
+
+- a reference Matrix Product State (MPS) baseline based on TensorKrowch;
+- a custom hierarchical Tree Tensor Network (TTN);
+- a hybrid TTN implementation with PyTorch transformations between tensor
+  network levels;
+- an AIM-based spatial front-end inspired by the DTTN paper;
+- YAML-driven experiments, checkpointing, metrics CSVs and loss-curve plots.
+
+The most important current result is that the custom TTN is no longer merely a
+synthetic prototype: it trains end-to-end on Flowers 102. A longer run showed
+that it learns the training set but overfits, so the current research focus is
+improving generalization.
 
 ## Goals
 
-- Build an end-to-end image classification pipeline driven by YAML configs.
-- Experiment with different **image embeddings** feeding into a tensor-network model.
-- Replace the reference MPS layer with a **custom tensor network architecture** designed from scratch.
-- Compare tensor-network approaches against classical deep-learning baselines.
+- Build a reproducible image-classification pipeline driven by YAML configs.
+- Compare tensor-network models under the same data and training conditions.
+- Use a stable MPS baseline as a reference.
+- Develop and analyze a custom TTN architecture.
+- Improve the TTN with spatial inductive bias before flattening images into
+  tensor-network sequences.
+- Produce training curves and experimental evidence suitable for the TFG memory.
 
----
+## Main Ideas
+
+### Baseline MPS
+
+The baseline route is:
+
+```text
+image -> embedding -> sequence [B, L, d] -> MPS -> logits
+```
+
+This model is used as a stable reference. It should remain comparable with the
+custom TTN experiments.
+
+### Hybrid Custom TTN
+
+The original custom TTN was a monolithic TensorKrowch network. It worked
+technically, but early training curves showed weak learning.
+
+The current version is hybrid:
+
+```text
+sequence [B, L, local_dim]
+-> TTNLevel
+-> LayerNorm + Linear + ReLU
+-> TTNLevel
+-> ...
+-> root vector [B, bond_dim]
+-> Linear(bond_dim, n_classes)
+```
+
+`TTNLevel` performs one level of tensor-network contraction with TensorKrowch.
+`HybridCustomTTN` orchestrates several independent levels and applies PyTorch
+modules between them. This avoids modifying TensorKrowch resultant nodes and
+keeps the model trainable.
+
+### AIM Spatial Front-End
+
+The project now includes an AIM front-end inspired by:
+
+> Deep Tree Tensor Networks for Image Recognition
+
+The AIM route is:
+
+```text
+image [B, 3, 224, 224]
+-> CNN stem
+-> AIM2D blocks
+-> Conv2d 1x1 to local_dim
+-> flatten + zigzag
+-> sequence [B, 196, local_dim]
+-> HybridCustomTTN
+-> logits
+```
+
+This keeps spatial structure before the image is flattened into a sequence.
+AIM2D combines two linear branches in opposite order and multiplies them with a
+Hadamard product. This produces multiplicative interactions that are natural
+from a tensor-network point of view while also adding convolutional parameter
+sharing.
 
 ## Current Progress
 
-- [x] Data pipeline for Oxford Flowers 102 (`OxfordFlowersDataset`, transforms, train/eval/test split).
-- [x] Config system (YAML → typed dataclasses).
-- [x] Reference MPS layer wired through `tensorkrowch` (provisional, will be replaced).
-- [x] `TrigPixelEmbedding` (per-pixel cos/sin embedding).
-- [x] `PatchEmbedding` implemented and integrated into the model factory.
-- [x] `CustomTTN`: hierarchical 3-to-1 TTN built from 3-node MPS blocks, implemented on top of `tensorkrowch.TensorNetwork` in `src/tn_dl/layers/mps_custom.py`.
-- [x] Structural padding (non-trainable `[1, 0, ..., 0]` nodes) for sequence lengths that are not a power of three.
-- [x] Zigzag (boustrophedon) linearization available in both `TrigPixelEmbedding` and `PatchEmbedding` via an `order` flag, surfaced through `ModelConfig.linearization_order`.
-- [x] `build_model(...)` routes `layer_name: custom_ttn` to the custom TTN wrapper (`MPSClassifier_1`).
-- [x] CustomTTN forward + backward validated on synthetic batches for `L ∈ {9, 27, 196}`, with every parameter receiving gradients.
-- [x] End-to-end training run with `layer_name: custom_ttn` on Flowers 102 (PatchEmbedding, `patch_size=16`, `L=196`) validated on a 2-epoch smoke test.
-- [x] Automatic download of Oxford Flowers 102 with two-layer idempotency (skips entirely if the dataset is already present, only fetches missing pieces otherwise).
-- [x] Loss tracking utility that writes `metrics.csv` and `loss_curve.png` for train/eval loss monitoring across epochs.
-- [ ] Long training run on `CustomTTN` (`epochs=20`, `bond_dim=8`) for a real convergence curve.
-- [ ] Benchmark `CustomTTN` vs. reference MPS baseline on Flowers 102.
-- [ ] Scale to the raw `TrigPixelEmbedding` regime (`L = C·H·W = 150 528`): evaluate migrating the contraction loop to the `op.stack` / `op.unbind` pattern used by `tensorkrowch.models.Tree`.
+- [x] Oxford Flowers 102 data pipeline.
+- [x] YAML configuration system.
+- [x] Reference MPS baseline through TensorKrowch.
+- [x] `TrigPixelEmbedding`.
+- [x] `PatchEmbedding`.
+- [x] Zigzag linearization for image-to-sequence conversion.
+- [x] Custom TTN based on 3-node MPS blocks.
+- [x] Structural padding with non-trainable neutral nodes.
+- [x] Hybrid TTN with `LayerNorm -> Linear -> ReLU` between levels.
+- [x] Synthetic forward/backward validation for `L = 9`, `L = 27` and
+  `L = 196`.
+- [x] End-to-end Flowers 102 training with `layer_name: custom_ttn`.
+- [x] Logging during training.
+- [x] `LossTracker` writing `metrics.csv` and `loss_curve.png`.
+- [x] AIM2D layer.
+- [x] AIMPatchEmbedding.
+- [x] Planned integration for `embedding_name: aim_patch`.
+- [x] Learning-rate scheduler design with `ReduceLROnPlateau`.
+- [ ] Smoke run for AIM + TTN + scheduler.
+- [ ] Full AIM + TTN training run.
+- [ ] Data augmentation for Flowers 102.
+- [ ] Comparison against the MPS baseline.
 - [ ] Migration to laboratory imaging datasets.
-
----
 
 ## Project Structure
 
-```
+```text
 src/tn_dl/
-├── cli/            # Entry points: train, eval, submit_slurm
-├── config/         # Dataclass schema + YAML loader
-├── data/           # OxfordFlowersDataset + DataLoader factory
-├── embeddings/     # TrigPixelEmbedding, PatchEmbedding
-├── layers/         # Reference MPS layer + custom TTN prototype + TN base class
-├── models/         # ImageClassifier + build_model factory
-├── training/       # Training loop, evaluation, checkpointing, loss tracking
-└── utils/          # Device, I/O, seeding helpers
+|-- cli/            # train, eval and SLURM entry points
+|-- config/         # dataclass schema and YAML loader
+|-- data/           # Oxford Flowers dataset and dataloaders
+|-- embeddings/     # TrigPixelEmbedding, PatchEmbedding, AIMPatchEmbedding
+|-- layers/         # MPS baseline, AIM2D and custom TTN layers
+|-- models/         # ImageClassifier and build_model factory
+|-- training/       # training loop, evaluation, checkpoints, loss tracking
+`-- utils/          # device, I/O and seeding helpers
 
 configs/
-├── experiments/    # Per-experiment YAML (flowers_mps.yaml, ...)
-└── runtime/        # Runtime YAML (local.yaml, slurm.yaml)
-
-tests/              # Pytest suite
-scripts/            # Local + SLURM launch scripts
+|-- experiments/    # experiment YAML files
+`-- runtime/        # local and SLURM runtime YAML files
 ```
 
----
+## Pipeline
 
-## Pipeline Overview
+1. Data loading: Oxford Flowers 102 images are resized/cropped to 224 x 224,
+   converted to tensors and normalized.
+2. Embedding: each image becomes a sequence `[B, sequence_length, local_dim]`.
+3. Tensor network layer: the embedded sequence is processed by either the MPS
+   baseline or the custom TTN.
+4. Classification: the final representation is mapped to 102 flower classes.
+5. Training: AdamW, cross-entropy loss, checkpointing, CSV metrics and loss
+   plots.
 
-1. **Data loading** — `OxfordFlowersDataset` reads `imagelabels.mat` and the raw JPG files. Images are resized to 256, center-cropped to 224 × 224, converted to tensors and normalized with ImageNet statistics.
-2. **Split** — dataset randomly divided into 70 % train, 15 % eval, 15 % test.
-3. **Embedding** — each image is mapped into a sequence of local feature vectors with shape `[B, sequence_length, local_dim]`. Two embeddings are currently available:
-   - `TrigPixelEmbedding`: one site per pixel-channel, using `(cos θ, sin θ)` with `θ = π · pixel / 2`.
-   - `PatchEmbedding`: splits the image into non-overlapping patches of size `patch_size × patch_size` and projects each flattened patch to `local_dim` with a linear layer.
-4. **Tensor network layer** — consumes the embedded sequence and produces class logits. Two backends are wired into the factory:
-   - `layer_name: mps` → reference Matrix Product State (`tensorkrowch.models.MPSLayer`), the default baseline.
-   - `layer_name: custom_ttn` → `CustomTTN`, a hierarchical 3-to-1 tree tensor network built from 3-node MPS blocks.
-5. **Training** — AdamW optimizer, cross-entropy loss, best-checkpoint saving by validation accuracy. Per-epoch metrics are written to CSV and train/eval loss curves are exported as `loss_curve.png`.
+## Embeddings
 
----
+| Embedding | Config name | Output sequence length |
+|-----------|-------------|------------------------|
+| TrigPixelEmbedding | `trig` | `C * H * W` |
+| PatchEmbedding | `patch` | `(H / patch_size) * (W / patch_size)` |
+| AIMPatchEmbedding | `aim_patch` | `(H / patch_size) * (W / patch_size)` |
 
-## Embedding ↔ Tensor Network Contract
+All tensor-network layers consume the same contract:
 
-The tensor-network layer is agnostic to the embedding choice. The contract is:
-
+```text
+embedding(image) -> [B, sequence_length, local_dim]
 ```
-embedding(image)  →  tensor  [B, sequence_length, local_dim]
+
+This keeps the tensor-network code independent from the image representation.
+
+## Linearization Order
+
+The model supports:
+
+- `row`: standard row-major flattening;
+- `zigzag`: alternating rows are reversed before flattening.
+
+Zigzag keeps consecutive sequence positions closer to spatial neighbors at row
+boundaries. The tensor network itself remains agnostic to the order; it only
+receives the final sequence.
+
+## AIM2D
+
+`AIM2D` lives in:
+
+```text
+src/tn_dl/layers/aim.py
 ```
 
-`sequence_length` is the number of sites of the tensor network and depends on the embedding:
+It expects:
 
-| Embedding             | `sequence_length`                  |
-|-----------------------|------------------------------------|
-| `TrigPixelEmbedding`  | `C · H · W`                        |
-| `PatchEmbedding`      | `(H / patch_size) · (W / patch_size)` |
+```text
+[B, C, H, W]
+```
 
-This keeps the tensor-network layer decoupled from the image representation and allows plugging new embeddings or new TN architectures without touching the training engine.
+and returns the same shape.
 
----
+Conceptually:
 
-## Linearization Order (`row` vs. `zigzag`)
+```text
+f1 = Linear(C -> C*R) + depthwise Conv2d
+f2 = grouped Conv2d + Linear(C*R -> C*R)
+interaction = f1(x) * f2(x)
+out = x + scale * Conv2d_1x1(interaction)
+```
 
-Flattening a 2D image to a 1D sequence breaks spatial proximity between adjacent rows. To partially recover it, both embeddings accept an `order` flag, surfaced at the config level as `model.linearization_order`:
+The product `f1(x) * f2(x)` is the key point: if both branches are linear in
+the input, their Hadamard product is bilinear. This gives AIM a natural
+connection with polynomial and tensor-network representations.
 
-- `row` (default for new MPS-style experiments): standard row-major flattening.
-- `zigzag` (boustrophedon): alternating rows are reversed so that consecutive sites in the sequence also correspond to spatially adjacent pixels at row boundaries. This is the common baseline for MPS-based image classifiers.
+## AIMPatchEmbedding
 
-Implementation:
+`AIMPatchEmbedding` lives in:
 
-- `PatchEmbedding` applies zigzag over the `(H/patch, W/patch)` patch grid.
-- `TrigPixelEmbedding` applies zigzag per-channel (variant *a*): each channel is zigzagged spatially and the three channels are concatenated in their natural order — `perm[c·H·W + i] = c·H·W + zigzag_hw[i]`.
+```text
+src/tn_dl/embeddings/aim_patch.py
+```
 
-The tensor network itself remains agnostic to the order; it only sees the permuted `[B, sequence_length, local_dim]` tensor.
+For Flowers 102 with 224 x 224 images and `patch_size: 16`:
 
----
+```text
+[B, 3, 224, 224]
+-> [B, aim_channels, 14, 14]
+-> [B, local_dim, 14, 14]
+-> [B, 196, local_dim]
+```
 
-## Custom TTN (`CustomTTN`)
+Unlike the original `PatchEmbedding`, it does not immediately flatten each
+patch. It first processes the image as a spatial feature map, then flattens the
+final grid.
 
-The repository implements a custom hierarchical tree tensor network in `src/tn_dl/layers/mps_custom.py`. The file exposes two classes:
+## Learning-Rate Scheduler
 
-- `CustomTTN(tk.TensorNetwork)` — the tensor network itself. Holds the parametric nodes of every level, the structural padding nodes, and implements `set_data_nodes` / `contract`.
-- `MPSClassifier_1(BaseTensorNetworkLayer)` — thin PyTorch wrapper. Runs the `CustomTTN` on the input batch and applies a final `nn.Linear(bond_dim, n_classes)` outside of the tensor network.
+The planned scheduler is:
 
-### Architecture
+```yaml
+scheduler_name: reduce_on_plateau
+```
 
-- Base block: a 3-node MPS (`left`, `center`, `right`) registered as `tk.ParamNode` instances so their tensors are materialised at construction and show up as `nn.Parameter`s of the parent network.
-  - `left : (bond, input)`, axes `(right, input)`
-  - `center : (bond, bond, input, output)`, axes `(left, right, input, output)`
-  - `right : (bond, input)`, axes `(left, input)`
-  - Internal bonds: `left[right] ^ center[left]` and `center[right] ^ right[left]`. The free `output` edge lives on the `center` node and is what feeds the next level (or becomes the root).
-  - Initialisation: `init_method="randn"`, `std=0.02`, matching the reference MPS layer.
-- Levels are built bottom-up until a single root block remains:
-  - Level 0: `input_dim = local_dim`.
-  - Levels `k > 0`: `input_dim = bond_dim` (they consume the `output` edges of the previous level).
-- Final classification happens outside the TN, in the `MPSClassifier_1` wrapper, to keep the contraction logic simple while the prototype stabilises.
+This maps to PyTorch's `ReduceLROnPlateau`.
 
-### Structural padding (option B)
+It monitors `eval_loss`. If validation loss stops improving for a fixed number
+of epochs, the learning rate is reduced. For example:
 
-When the number of sites at a given level is not a multiple of three, the last block of the next level needs fewer than 3 real inputs. Instead of padding data or supporting variable-arity blocks, `CustomTTN` inserts non-trainable `tk.Node`s with a fixed `[1, 0, ..., 0]` tensor on the surplus input edges. These nodes are registered per level in `self.padding_nodes_by_level` and do not appear in `model.parameters()`, so they contribute no gradients.
+```yaml
+learning_rate: 0.0005
+scheduler_factor: 0.5
+scheduler_patience: 5
+scheduler_min_lr: 0.000001
+```
 
-Example for `sequence_length = 196` (PatchEmbedding with `patch_size=16`):
+This means:
 
-| Level | Sites | Blocks | Capacity | Padding nodes |
-|-------|-------|--------|----------|---------------|
-| 0     | 196   | 66     | 198      | 2             |
-| 1     | 66    | 22     | 66       | 0             |
-| 2     | 22    | 8      | 24       | 2             |
-| 3     | 8     | 3      | 9        | 1             |
-| 4     | 3     | 1      | 3        | 0 (root)      |
+```text
+0.0005 -> 0.00025 -> 0.000125 -> ...
+```
 
-### Contraction
+whenever `eval_loss` reaches a plateau, never going below `scheduler_min_lr`.
+This is useful here because the main problem is generalization, so the scheduler
+reacts to validation behavior instead of training loss alone.
 
-`contract()` runs bottom-up. At level 0 the partners of each block's three `input` edges are discovered through `neighbours("input")` (they are the data nodes created by `set_data_nodes` plus the padding nodes connected in `_connect_levels`). At levels `k > 0`, `contract()` passes the partners — the composites produced by level `k − 1` plus the padding nodes of level `k` — **explicitly** to `_contract_block`, because `@` creates a new composite node in TensorKrowch without rerouting the `node1`/`node2` pointers of the shared edges to it. The composites do inherit the shared edge reference, so `@` still detects and contracts it correctly.
+## Example Config: AIM + TTN
 
-### Validation status
+```yaml
+name: flowers_aim_ttn
+seed: 7
+device: auto
 
-Synthetic batch driver in `debug_ttn.py` confirms, for `bond_dim=4`, `local_dim=2`, `n_classes=3`, `batch=2`:
+data:
+  dataset: flowers
+  data_dir: flower_data
+  batch_size: 16
+  num_workers: 0
+  smoke_samples:
+  download: true
 
-- Forward + backward green for `L ∈ {9, 27, 196}`.
-- Every trainable parameter receives gradients (`14` params for `L=9`, `41` for `L=27`, `302` for `L=196`).
-- Padding kicks in at multiple levels for `L = 196`, as tabulated above.
+model:
+  embedding_name: aim_patch
+  layer_name: custom_ttn
+  input_shape: [3, 224, 224]
+  local_dim: 8
+  bond_dim: 8
+  n_classes: 102
+  patch_size: 16
+  linearization_order: zigzag
+  aim_channels: 32
+  num_aim_blocks: 2
+  aim_expansion_ratio: 3
+  aim_kernel_size: 3
+  aim_use_ln: true
 
----
+training:
+  epochs: 50
+  learning_rate: 0.0005
+  weight_decay: 0.001
+  log_every_n_steps: 50
+  scheduler_name: reduce_on_plateau
+  scheduler_factor: 0.5
+  scheduler_patience: 5
+  scheduler_min_lr: 0.000001
 
-## Running an Experiment
+io:
+  root_dir: runs
+  checkpoint_name: best.pt
+  metrics_name: metrics.csv
+```
 
-Install the package (Python 3.11 or 3.12):
+## Running
+
+Install the package in editable mode:
 
 ```bash
-pip install -e .
+pip install -e ".[dev]"
 ```
 
-Train with a YAML experiment config. Two experiments are provided out of the box:
+Train the original custom TTN:
 
 ```bash
-# Reference MPS baseline
-python -m tn_dl.cli.train --config configs/experiments/flowers_mps.yaml
-
-# Custom hierarchical TTN
 python -m tn_dl.cli.train --config configs/experiments/flowers_custom_ttn.yaml
+```
+
+Train the AIM + TTN experiment:
+
+```bash
+python -m tn_dl.cli.train --config configs/experiments/flowers_aim_ttn.yaml
 ```
 
 Evaluate a checkpoint:
@@ -185,96 +329,89 @@ python -m tn_dl.cli.eval \
   --checkpoint runs/<timestamp>-flowers_mps/best.pt
 ```
 
-Runtime overrides (device, output directory, runtime YAML, resume checkpoint) are available as CLI flags.
-
 Each run directory contains:
 
-- `best.pt`: best checkpoint by validation accuracy.
-- `metrics.csv`: epoch-level train loss, eval loss and eval accuracy.
-- `loss_curve.png`: train/eval loss plot generated after each epoch.
-- `config.yaml`: resolved experiment configuration.
+- `best.pt`;
+- `metrics.csv`;
+- `loss_curve.png`;
+- resolved `config.yaml`.
 
----
+## Useful Synthetic Checks
 
-## Configuration Example
+HybridCustomTTN:
 
-`configs/experiments/flowers_mps.yaml` (patch embedding, reference MPS). An analogous `configs/experiments/flowers_custom_ttn.yaml` ships with `layer_name: custom_ttn` for the hierarchical TTN backend.
-
-```yaml
-name: flowers_mps
-seed: 7
-device: auto
-
-data:
-  dataset: flowers
-  data_dir: ./flower_data
-  batch_size: 32
-  num_workers: 0
-  download: false
-
-model:
-  embedding_name: patch
-  layer_name: mps            # or "custom_ttn" to use CustomTTN
-  input_shape: [3, 224, 224]
-  local_dim: 2
-  bond_dim: 8
-  n_classes: 102
-  patch_size: 16
-  linearization_order: zigzag  # "row" or "zigzag"
-
-training:
-  epochs: 10
-  learning_rate: 0.0005
-  weight_decay: 0.0
-  log_every_n_steps: 10
-
-io:
-  root_dir: runs
-  checkpoint_name: best.pt
-  metrics_name: metrics.csv
+```bash
+python -c "import torch; from tn_dl.layers.mps_custom import MPSClassifier_1; m=MPSClassifier_1(sequence_length=196, local_dim=2, n_classes=102, bond_dim=4); x=torch.randn(2,196,2); y=m(x); print(y.shape); y.sum().backward(); print([n for n,p in m.named_parameters() if p.requires_grad and p.grad is None])"
 ```
 
-With `patch_size=16` and `input_shape=[3,224,224]`, the resulting sequence has `14 · 14 = 196` sites.
+AIMPatchEmbedding:
 
----
+```bash
+python -c "import torch; from tn_dl.embeddings import AIMPatchEmbedding; e=AIMPatchEmbedding(patch_size=16, local_dim=8, in_channels=3, order='zigzag', grid_h=14, grid_w=14); x=torch.randn(2,3,224,224); y=e(x); print(y.shape); y.sum().backward(); print('OK')"
+```
+
+Full AIM + TTN forward:
+
+```bash
+python -c "import torch; from pathlib import Path; from tn_dl.config.loader import load_experiment_config; from tn_dl.models.factory import build_model; cfg=load_experiment_config(Path('configs/experiments/flowers_aim_ttn.yaml')); m=build_model(cfg.model); x=torch.randn(2,3,224,224); y=m(x); print(y.shape); y.sum().backward(); print([n for n,p in m.named_parameters() if p.requires_grad and p.grad is None])"
+```
 
 ## Dataset
 
-When `data.download: true` is set in the YAML (the default for `flowers_custom_ttn.yaml`), the Oxford Flowers 102 dataset is downloaded automatically on first run into `data_dir`. The download is idempotent: if the dataset is already present it is skipped entirely, and if only part is missing (e.g. `imagelabels.mat` exists but images are gone) only the missing pieces are fetched.
+Oxford Flowers 102 is downloaded automatically when `data.download: true` is
+set in the YAML config.
 
-Alternatively, the dataset can be placed manually under `data_dir` with the following layout:
+Expected manual layout:
 
-```
+```text
 flower_data/
-├── 102flowers/jpg/image_00001.jpg ... image_08189.jpg
-└── imagelabels.mat
+|-- 102flowers/jpg/image_00001.jpg ... image_08189.jpg
+`-- imagelabels.mat
 ```
 
-Source: <https://www.robots.ox.ac.uk/~vgg/data/flowers/102/>.
+Dataset source:
 
----
+<https://www.robots.ox.ac.uk/~vgg/data/flowers/102/>
 
 ## Tech Stack
 
 - Python 3.11 / 3.12
-- PyTorch ≥ 2.8, TorchVision ≥ 0.26 (Windows / Linux)
-- [TensorKrowch](https://github.com/joserapa98/tensorkrowch) ≥ 1.1.6 (reference MPS + `CustomTTN` backbone)
-- PyYAML for configuration
-- Matplotlib for loss-curve visualization
-- pytest + ruff (dev dependencies)
+- PyTorch
+- TorchVision
+- TensorKrowch
+- PyYAML
+- SciPy
+- Matplotlib
+- pytest and ruff for development
 
-> **macOS Intel note:** PyTorch stopped publishing x86_64 wheels after 2.2.2. On Intel Macs, `pyproject.toml` cannot be satisfied directly; install the pinned stack manually (`torch==2.2.2`, `torchvision==0.17.2`, `tensorkrowch==1.1.6`, `numpy<2`, `scipy`, `PyYAML`, `pytest`, `ruff`) and then `pip install -e . --no-deps`. `scipy` is required at runtime by `OxfordFlowersDataset` to read `imagelabels.mat` and is easy to miss when using `--no-deps`. The project code is kept compatible with both torch 2.2.2 and torch 2.8.
+Windows/Linux use the versions defined by `pyproject.toml`.
 
----
+On Intel macOS, PyTorch must be pinned manually to the last compatible stack:
+
+```bash
+torch==2.2.2
+torchvision==0.17.2
+numpy<2
+```
+
+Then install the project with:
+
+```bash
+pip install -e . --no-deps
+```
 
 ## Author
 
-**Manuel Arenas Sánchez**
-BSc Physics — Final Year Project (TFG)
-Universidad Europea de Madrid · Internship at ITCL
+Manuel Arenas Sanchez  
+Email: manuelarenas2002@hotmail.es  
+GitHub: [Manuel-Arenas-Sanchez](https://github.com/Manuel-Arenas-Sanchez)
 
----
+Bachelor's Thesis (TFG), BSc Physics.  
+Universidad Europea de Madrid. Internship at ITCL.
 
 ## Notes
 
-This repository is continuously updated as the project evolves. The first end-to-end training run with `layer_name: custom_ttn` on Flowers 102 is now green, and each training run now exports both tabular metrics and a visual train/eval loss curve for easier TFG analysis. The current focus is launching a longer `CustomTTN` run (`epochs=20`, `bond_dim=8`) for a real convergence curve and benchmarking it against the reference MPS baseline, followed by scaling the contraction loop to handle the raw `TrigPixelEmbedding` regime (`L = 150 528`).
+The current experimental question is no longer "does the custom TTN run?" but
+"how can the custom TTN generalize better?". The AIM front-end, learning-rate
+scheduler, data augmentation and controlled comparisons against MPS are the next
+steps in answering that question.
