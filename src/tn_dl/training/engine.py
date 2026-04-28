@@ -68,6 +68,12 @@ def train(config: ExperimentConfig) -> TrainingArtifacts:
         lr=config.training.learning_rate,
         weight_decay=config.training.weight_decay,
     )
+
+    scheduler = _build_scheduler(
+        optimizer = optimizer,
+        config = config,
+    )
+
     criterion = nn.CrossEntropyLoss()
     run_dir = _prepare_run_dir(config)
     checkpoint_path = run_dir / config.io.checkpoint_name
@@ -92,6 +98,7 @@ def train(config: ExperimentConfig) -> TrainingArtifacts:
             checkpoint_path=config.training.resume_checkpoint,
             model=model,
             optimizer=optimizer,
+            scheduler = scheduler,
             device=device,
         )
 
@@ -116,6 +123,19 @@ def train(config: ExperimentConfig) -> TrainingArtifacts:
             criterion=criterion,
             device=device,
         )
+
+        current_lr = optimizer.param_groups[0]["lr"]
+
+        if scheduler is not None:
+            scheduler.step(eval_metrics.loss)
+            new_lr = optimizer.param_groups[0]["lr"]
+
+            if new_lr != current_lr:
+                logger.info(
+                    "Scheduler reduce learning rate: %.8f -> %.8f",
+                    current_lr,
+                    new_lr
+                )
         
         logger.info(
             "Epoch %s/%s finalizada: train_loss = %.6f, eval_loss = %.6f, eval_accuracy = %.4f",
@@ -139,6 +159,7 @@ def train(config: ExperimentConfig) -> TrainingArtifacts:
                 checkpoint_path=checkpoint_path,
                 model=model,
                 optimizer=optimizer,
+                scheduler = scheduler,
                 epoch=epoch + 1,
                 best_accuracy=best_accuracy,
             )
@@ -161,7 +182,12 @@ def evaluate(config: ExperimentConfig, checkpoint_path: Path) -> EvalMetrics:
     dataloaders = build_dataloaders(config.data)
     model = build_model(config.model).to(device)
     _prime_model(model, config, device)
-    _load_checkpoint(checkpoint_path=checkpoint_path, model=model, optimizer=None, device=device)
+    _load_checkpoint(checkpoint_path=checkpoint_path,
+                     model=model,
+                     optimizer=None,
+                     scheduler=None,
+                     device=device
+                )
     criterion = nn.CrossEntropyLoss()
     return _run_evaluation(
         model=model,
@@ -170,6 +196,36 @@ def evaluate(config: ExperimentConfig, checkpoint_path: Path) -> EvalMetrics:
         device=device,
     )
 
+def _build_scheduler(
+        optimizer: torch.optim.Optimizer,
+        config: ExperimentConfig,
+) -> torch.optim.lr_scheduler.ReduceLROnPlateau | None:
+    """
+    Construye el scheduler del learning rate si la config lo pide.
+
+    De momento usamos ReduceLROnPlateau porque el criterio natural aquí es eval_loss: si la perdida
+    de evaluación deja de mejorar, reducimos el paso del optimiador.
+
+    Esto encaja especialmente bien con Flowers102, donde el problema observado no era solo aprender
+    train, sino controlar la generalización.
+    """
+    scheduler_name = config.training.scheduler_name
+
+    if scheduler_name is None:
+        return None
+    
+    if scheduler_name != "reduce_on_plateau":
+        raise ValueError(
+            "Unsupported scheduler_name. Use None or 'reduce_on_plateau'."
+        )
+    
+    return torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer,
+        mode = "min",
+        factor = config.training.scheduler_factor,
+        patience = config.training.scheduler_patience,
+        min_lr = config.training.scheduler_min_lr,
+    )
 
 def _prepare_run_dir(config: ExperimentConfig) -> Path:
     if config.training.resume_checkpoint is not None:
@@ -254,6 +310,7 @@ def _save_checkpoint(
     checkpoint_path: Path,
     model: nn.Module,
     optimizer: torch.optim.Optimizer,
+    scheduler: torch.optim.lr_scheduler.ReduceLROnPlateau | None,
     epoch: int,
     best_accuracy: float,
 ) -> None:
@@ -263,6 +320,7 @@ def _save_checkpoint(
         "model_state_dict": model.state_dict(),
         "ordered_parameters": [parameter.detach().cpu() for parameter in model.parameters()],
         "optimizer_state_dict": optimizer.state_dict(),
+        "scheduler_state_dict": scheduler.state_dict() if scheduler is not None else None,
     }
     torch.save(checkpoint, checkpoint_path)
 
@@ -271,8 +329,10 @@ def _load_checkpoint(
     checkpoint_path: Path,
     model: nn.Module,
     optimizer: torch.optim.Optimizer | None,
+    scheduler: torch.optim.lr_scheduler.ReduceLROnPlateau | None,
     device: torch.device,
 ) -> tuple[int, float]:
+    
     checkpoint = torch.load(checkpoint_path, map_location=device)
     try:
         model.load_state_dict(checkpoint["model_state_dict"])
@@ -280,8 +340,10 @@ def _load_checkpoint(
         _load_parameters_in_order(model, checkpoint["ordered_parameters"], device)
     if optimizer is not None and "optimizer_state_dict" in checkpoint:
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-    return int(checkpoint.get("epoch", 0)), float(checkpoint.get("best_accuracy", float("-inf")))
+    if scheduler is not None and checkpoint.get("scheduler_state_dict") is not None:
+        scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
 
+    return int(checkpoint.get("epoch", 0)), float(checkpoint.get("best_accuracy", float("-inf")))
 
 def _load_parameters_in_order(
     model: nn.Module,

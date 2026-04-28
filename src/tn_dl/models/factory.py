@@ -5,7 +5,7 @@ from math import prod
 from torch import nn
 
 from tn_dl.config import ModelConfig
-from tn_dl.embeddings import PatchEmbedding, TrigPixelEmbedding
+from tn_dl.embeddings import AIMPatchEmbedding, PatchEmbedding, TrigPixelEmbedding
 from tn_dl.layers import MPSClassifier, MPSClassifier_1
 from tn_dl.models.classifier import ImageClassifier
 
@@ -40,6 +40,29 @@ def build_model(config: ModelConfig) -> nn.Module:
             order = order,
             grid_h = grid_h,
             grid_w = grid_w
+        )
+        sequence_length = grid_h * grid_w
+    elif embedding_name == "aim_patch":
+        if config.patch_size is None:
+            raise ValueError("AimPatchEmbedding requires 'patch_size' in ModelConfig")
+        if height % config.patch_size != 0 or width % config.patch_size != 0:
+            raise ValueError("input_shape H and W must be divisible by patch_size.")
+        
+        grid_h = height // config.patch_size
+        grid_w = width // config.patch_size
+
+        embedding = AIMPatchEmbedding(
+            patch_size = config.patch_size,
+            local_dim = config.local_dim,
+            in_channels = in_channels,
+            order = order,
+            grid_h = grid_h,
+            grid_w = grid_w,
+            aim_channels = config.aim_channels,
+            num_aim_blocks = config.num_aim_blocks,
+            aim_expansion_ratio = config.aim_expansion_ratio,
+            aim_kernel_size = config.aim_kernel_size,
+            aim_use_ln = config.aim_use_ln,
         )
         sequence_length = grid_h * grid_w
     else:

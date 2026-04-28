@@ -84,8 +84,12 @@ def _parse_model_config(payload: dict[str, Any]) -> ModelConfig:
         boundary=str(payload.get("boundary", "obc")),
         patch_size=_optional_int(payload.get("patch_size")),
         linearization_order = _parse_linearization_order(payload.get("linearization_order")),
+        aim_channels = _optional_int_with_default(payload.get("aim_channels"), 32, "aim_channels"),
+        num_aim_blocks = _optional_int_with_default(payload.get("num_aim_blocks"), 2, "num_aim_blocks"),
+        aim_expansion_ratio = _optional_int_with_default(payload.get("aim_expansion_ratio"), 3, "aim_expansion_ratio"),
+        aim_kernel_size = _optional_int_with_default(payload.get("aim_kernel_size"), 3, "aim_kernel_size"),
+        aim_use_ln = _optional_bool_with_default(payload.get("aim_use_ln"), True, "aim_use_ln"),
     )
-
 
 def _parse_training_config(payload: dict[str, Any]) -> TrainingConfig:
     resume_checkpoint = payload.get("resume_checkpoint")
@@ -95,6 +99,10 @@ def _parse_training_config(payload: dict[str, Any]) -> TrainingConfig:
         weight_decay=float(payload.get("weight_decay", 0.0)),
         log_every_n_steps=int(payload.get("log_every_n_steps", 10)),
         resume_checkpoint=Path(resume_checkpoint) if resume_checkpoint else None,
+        scheduler_name = _optional_str(payload.get("scheduler_name")),
+        scheduler_factor = float(payload.get("scheduler_factor", 0.5)),
+        scheduler_patience = int(payload.get("scheduler_patience", 5)),
+        scheduler_min_lr = float(payload.get("scheduler_min_lr", 1e-6))
     )
 
 
@@ -187,3 +195,17 @@ def _parse_linearization_order(value: Any) -> str:
 
 def _raise_missing(key: str) -> dict[str, Any]:
     raise ValueError(f"Missing '{key}' in configuration.")
+
+def _optional_int_with_default(value: Any, default: int, key: str) -> int:
+    if value is None:
+        return default
+    if not isinstance(value, int):
+        raise ValueError(f"Expected '{key}' to be an integer.")
+    return value
+
+def _optional_bool_with_default(value: Any, default: bool, key: str) -> bool:
+    if value is None:
+        return default
+    if not isinstance(value, bool):
+        raise ValueError(f"Expected '{key}' to be a boolean.")
+    return value

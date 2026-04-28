@@ -27,6 +27,13 @@ class ModelConfig:
     patch_size: int | None = None
     linearization_order: str = "zigzag" # "row" o "zigzag"
 
+    #Hiperparámetros específicos del front-end AIM
+    aim_channels: int = 32
+    num_aim_blocks: int = 2
+    aim_expansion_ratio: int = 3
+    aim_kernel_size: int = 3
+    aim_use_ln: bool = True
+
 @dataclass(slots=True)
 class TrainingConfig:
     epochs: int
@@ -34,6 +41,11 @@ class TrainingConfig:
     weight_decay: float = 0.0
     log_every_n_steps: int = 10
     resume_checkpoint: Path | None = None
+
+    scheduler_name: str | None = None
+    scheduler_factor: float = 0.5
+    scheduler_patience: int = 5
+    scheduler_min_lr: float = 1e-6
 
 
 @dataclass(slots=True)
