@@ -190,6 +190,24 @@ def train(config: ExperimentConfig) -> TrainingArtifacts:
                 "Nuevo mejor checkpoint guardado con eval_accuracy = %.4f",
                 best_accuracy,
             )
+    from tn_dl.evaluation import write_classification_diagnostics
+    diagnostics_dir = run_dir / "diagnostics"
+    logger.info("Generando diagnósticos por clase en %s", diagnostics_dir)
+    _load_checkpoint(
+        checkpoint_path = checkpoint_path,
+        model = model,
+        optimizer = None,
+        scheduler = None,
+        device = device,
+    )
+    write_classification_diagnostics(
+        model = model,
+        dataloader = dataloaders.eval_loader,
+        device = device,
+        n_classes = config.model.n_classes,
+        output_dir = diagnostics_dir,
+    )
+    logger.info("Diagnósticos guardados.")
             
     return TrainingArtifacts(
         run_dir=run_dir,
