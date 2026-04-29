@@ -30,8 +30,13 @@ class LossTracker:
             *,
             epoch: int,
             train_loss: float,
+            train_accuracy: float,
             eval_loss: float,
             eval_accuracy: float,
+            eval_top5_accuracy: float,
+            mean_confidence_correct: float,
+            mean_confidence_wrong: float,
+            learning_rate: float,
     ) -> None:
         """
         Guarda una época de la metrica e inmediatamente guarda los resultados.
@@ -47,8 +52,13 @@ class LossTracker:
             {
                 "epoch": epoch,
                 "train_loss": train_loss,
+                "train_accuracy": train_accuracy,
                 "eval_loss": eval_loss,
                 "eval_accuracy": eval_accuracy,
+                "eval_top5_accuracy": eval_top5_accuracy,
+                "mean_confidence_correct": mean_confidence_correct,
+                "mean_confidence_wrong": mean_confidence_wrong,
+                "learning_rate": learning_rate,
             }
         )
 

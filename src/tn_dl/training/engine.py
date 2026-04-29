@@ -27,10 +27,25 @@ class TrainingArtifacts:
 
 
 @dataclass(slots=True)
-class EvalMetrics:
+class EpochMetrics:
+    """
+    Resume lo que ha hecho el modelo en una pasada completa por un dataloader.
+
+    Sirve tanto para train como para eval:
+        - loss: perdida media
+        - accuracy: acierto top-1
+        - top5_accuracy: si la clase correcta aparece entre las 5 más probables.
+        - mean_confidence_correct: confianza media cuando acierta.
+        - mean_confidence_wrong: confianza media cuando falla.
+    
+    Las confianzas ayudan a detectar sobreconfianza: si el modelo falla con probabilidad muy alta,
+    CrossEntropyLoss suele crecer mucho aunque la accuracy no cambie tanto.
+    """
     loss: float
     accuracy: float
-
+    top5_accuracy: float
+    mean_confidence_correct: float
+    mean_confidence_wrong: float
 
 def train(config: ExperimentConfig) -> TrainingArtifacts:
     seed_everything(config.seed)
@@ -109,7 +124,7 @@ def train(config: ExperimentConfig) -> TrainingArtifacts:
             config.training.epochs,
         )
 
-        train_loss = _run_training_epoch(
+        train_metrics = _run_training_epoch(
             model=model,
             dataloader=dataloaders.train_loader,
             criterion=criterion,
@@ -138,19 +153,27 @@ def train(config: ExperimentConfig) -> TrainingArtifacts:
                 )
         
         logger.info(
-            "Epoch %s/%s finalizada: train_loss = %.6f, eval_loss = %.6f, eval_accuracy = %.4f",
+            "Epoch %s/%s finalizada: train_loss = %.6f, train_accuracy = %.4f, " 
+            "eval_loss = %.6f, eval_accuracy = %.4f, eval_top5_accuracy = %.4f",
             epoch + 1,
             config.training.epochs,
-            train_loss,
+            train_metrics.loss,
+            train_metrics.accuracy,
             eval_metrics.loss,
             eval_metrics.accuracy,
+            eval_metrics.top5_accuracy,
         )
 
         loss_tracker.record_epoch(
             epoch = epoch + 1,
-            train_loss = train_loss,
+            train_loss = train_metrics.loss,
+            train_accuracy = train_metrics.accuracy,
             eval_loss = eval_metrics.loss,
             eval_accuracy = eval_metrics.accuracy,
+            eval_top5_accuracy = eval_metrics.top5_accuracy,
+            mean_confidence_correct = eval_metrics.mean_confidence_correct,
+            mean_confidence_wrong = eval_metrics.mean_confidence_wrong,
+            learning_rate = optimizer.param_groups[0]["lr"]
         )
 
         if eval_metrics.accuracy >= best_accuracy:
@@ -177,7 +200,7 @@ def train(config: ExperimentConfig) -> TrainingArtifacts:
     )
 
 
-def evaluate(config: ExperimentConfig, checkpoint_path: Path) -> EvalMetrics:
+def evaluate(config: ExperimentConfig, checkpoint_path: Path) -> EpochMetrics:
     device = resolve_device(config.device)
     dataloaders = build_dataloaders(config.data)
     model = build_model(config.model).to(device)
@@ -250,33 +273,50 @@ def _run_training_epoch(
     optimizer: torch.optim.Optimizer,
     device: torch.device,
     log_every_n_steps: int,
-) -> float:
+) -> EpochMetrics:
     model.train()
     total_loss = 0.0
     total_items = 0
+    total_correct = 0
     num_batches = len(dataloader)
+
     for step, (images, labels) in enumerate(dataloader, start = 1):
         images = images.to(device)
         labels = labels.to(device=device, dtype=torch.long)
+
         optimizer.zero_grad(set_to_none=True)
         logits = model(images)
         loss = criterion(logits, labels)
         loss.backward()
         optimizer.step()
+
+        predictions = logits.argmax(dim = 1)
         batch_size = labels.size(0)
+
         total_loss += loss.item() * batch_size
         total_items += batch_size
+        total_correct += int((predictions == labels).sum().item())
+
         if log_every_n_steps > 0 and (
             step == 1 or step % log_every_n_steps == 0 or step == num_batches
         ):
             running_loss = total_loss / max(total_items, 1)
+            running_accuracy = total_correct / max(total_items, 1)
             logger.info(
-                "Batch %s/%s: running_loss = %.6f",
+                "Batch %s/%s: running_loss = %.6f, running_accuracy = %.4f",
                 step,
                 num_batches,
                 running_loss,
+                running_accuracy,
             )
-    return total_loss / max(total_items, 1)
+    
+    return EpochMetrics(
+        loss = total_loss / max(total_items, 1),
+        accuracy = total_correct / max(total_items, 1),
+        top5_accuracy = 0.0,
+        mean_confidence_correct = 0.0,
+        mean_confidence_wrong = 0.0,
+    )
 
 
 def _run_evaluation(
@@ -284,25 +324,56 @@ def _run_evaluation(
     dataloader: torch.utils.data.DataLoader[tuple[torch.Tensor, torch.Tensor]],
     criterion: nn.Module,
     device: torch.device,
-) -> EvalMetrics:
+) -> EpochMetrics:
     model.eval()
     total_loss = 0.0
     total_items = 0
     total_correct = 0
+    total_top5_correct = 0
+
+    confidence_correct_sum = 0.0
+    confidence_wrong_sum = 0.0
+    num_correct = 0
+    num_wrong = 0
+
     with torch.no_grad():
         for images, labels in dataloader:
             images = images.to(device)
             labels = labels.to(device=device, dtype=torch.long)
+
             logits = model(images)
             loss = criterion(logits, labels)
-            predictions = logits.argmax(dim=1)
+
+            probabilities = torch.softmax(logits, dim = 1)
+            confidences, predictions = probabilities.max(dim = 1)
+
+            k = min(5, logits.shape[1])
+            top5_predictions = logits.topk(k = k, dim = 1).indices
+            top5_matches = top5_predictions.eq(labels.unsqueeze(1)).any(dim=1)
+
+            correct_mask = predictions == labels
+            wrong_mask = ~correct_mask
+
             batch_size = labels.size(0)
             total_loss += loss.item() * batch_size
             total_items += batch_size
-            total_correct += int((predictions == labels).sum().item())
-    return EvalMetrics(
-        loss=total_loss / max(total_items, 1),
-        accuracy=total_correct / max(total_items, 1),
+            total_correct += int(correct_mask.sum().item())
+            total_top5_correct += int(top5_matches.sum().item())
+
+            if correct_mask.any():
+                confidence_correct_sum += float(confidences[correct_mask].sum().item())
+                num_correct += int(correct_mask.sum().item())
+            
+            if wrong_mask.any():
+                confidence_wrong_sum += float(confidences[wrong_mask].sum().item())
+                num_wrong += int(wrong_mask.sum().item())
+
+    return EpochMetrics(
+        loss = total_loss / max(total_items, 1),
+        accuracy = total_correct / max(total_items, 1),
+        top5_accuracy = total_top5_correct / max(total_items, 1),
+        mean_confidence_correct = confidence_correct_sum / max(num_correct, 1),
+        mean_confidence_wrong = confidence_wrong_sum / max(num_wrong, 1),
     )
 
 
