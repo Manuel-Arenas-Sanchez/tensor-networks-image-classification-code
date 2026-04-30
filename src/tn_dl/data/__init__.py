@@ -15,5 +15,9 @@ def build_dataloaders(data_config):
     if dataset_name == "flowers":
         from tn_dl.data import flowers
         return flowers.build_flowers_dataloaders(data_config)
+
+    if dataset_name == "lab_apparatus_crop":
+        from tn_dl.data import lab_apparatus
+        return lab_apparatus.build_lab_apparatus_dataloaders(data_config)
     
-    raise ValueError(f"Unsupported dataset '{data_config.dataset}'")
+    raise ValueError(f"Unsupported dataset '{data_config.dataset}'.")
