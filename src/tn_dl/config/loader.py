@@ -84,11 +84,24 @@ def _parse_model_config(payload: dict[str, Any]) -> ModelConfig:
         boundary=str(payload.get("boundary", "obc")),
         patch_size=_optional_int(payload.get("patch_size")),
         linearization_order = _parse_linearization_order(payload.get("linearization_order")),
-        aim_channels = _optional_int_with_default(payload.get("aim_channels"), 32, "aim_channels"),
-        num_aim_blocks = _optional_int_with_default(payload.get("num_aim_blocks"), 2, "num_aim_blocks"),
-        aim_expansion_ratio = _optional_int_with_default(payload.get("aim_expansion_ratio"), 3, "aim_expansion_ratio"),
-        aim_kernel_size = _optional_int_with_default(payload.get("aim_kernel_size"), 3, "aim_kernel_size"),
+        aim_channels = _optional_int_with_default(
+            payload.get("aim_channels"), 32, "aim_channels"
+        ),
+        num_aim_blocks = _optional_int_with_default(
+            payload.get("num_aim_blocks"), 2, "num_aim_blocks"
+        ),
+        aim_expansion_ratio = _optional_int_with_default(
+            payload.get("aim_expansion_ratio"), 3, "aim_expansion_ratio"
+        ),
+        aim_kernel_size = _optional_int_with_default(
+            payload.get("aim_kernel_size"), 3, "aim_kernel_size"
+        ),
         aim_use_ln = _optional_bool_with_default(payload.get("aim_use_ln"), True, "aim_use_ln"),
+        head_type = _parse_head_type(payload.get("head_type")),
+        head_hidden_dim = _optional_int_with_default(
+            payload.get("head_hidden_dim"), 32, "head_hidden_dim"
+        ),
+        head_dropout = _parse_dropout(payload.get("head_dropout")),
     )
 
 def _parse_training_config(payload: dict[str, Any]) -> TrainingConfig:
@@ -192,6 +205,24 @@ def _parse_linearization_order(value: Any) -> str:
     if normalized not in ("row", "zigzag"):
         raise ValueError("Expected 'linearization_order' to be 'row' or 'zigzag'.")
     return normalized
+
+def _parse_head_type(value: Any) -> str:
+    if value is None:
+        return "linear"
+    if not isinstance(value, str):
+        raise ValueError("Expected 'head_type' to be a string.")
+    normalized = value.lower()
+    if normalized not in ("linear", "mlp"):
+        raise ValueError("Expected 'head_type' to be 'linear' or 'mlp'.")
+    return normalized
+
+def _parse_dropout(value: Any) -> float:
+    if value is None:
+        return 0.0
+    dropout = float(value)
+    if not 0.0 <= dropout < 1.0:
+        raise ValueError("Expected 'head_dropout' to be in the interval [0, 1).")
+    return dropout
 
 def _raise_missing(key: str) -> dict[str, Any]:
     raise ValueError(f"Missing '{key}' in configuration.")

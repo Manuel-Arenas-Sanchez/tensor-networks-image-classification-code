@@ -85,6 +85,9 @@ def build_model(config: ModelConfig) -> nn.Module:
             bond_dim = config.bond_dim,
             out_position = config.out_position,
             boundary = config.boundary,
+            head_type = config.head_type,
+            head_hidden_dim = config.head_hidden_dim,
+            head_dropout = config.head_dropout,
         )
     else:
          raise ValueError(f"Unsupported tensor layer '{config.layer_name}'.")

@@ -308,6 +308,9 @@ class MPSClassifier_1(BaseTensorNetworkLayer):
         bond_dim: int,
         out_position: int | None = None,
         boundary: str = "obc",
+        head_type: str = "linear",
+        head_hidden_dim: int = 32,
+        head_dropout: float = 0.0,
     ) -> None:
         super().__init__()
         self.sequence_length = sequence_length
@@ -316,13 +319,30 @@ class MPSClassifier_1(BaseTensorNetworkLayer):
         self.bond_dim = bond_dim
         self.out_position = out_position
         self.boundary = boundary
+        self.head_type = head_type
+        self.head_hidden_dim = head_hidden_dim
+        self.head_dropout = head_dropout
 
         self.network = HybridCustomTTN(
             sequence_length = sequence_length,
             local_dim = local_dim,
             bond_dim = bond_dim,
         )
-        self.classifier = nn.Linear(bond_dim, n_classes)
+        self.classifier = self._build_classifier()
+
+    def _build_classifier(self) -> nn.Module:
+        if self.head_type == "linear":
+            return nn.Linear(self.bond_dim, self.n_classes)
+
+        if self.head_type == "mlp":
+            return nn.Sequential(
+                nn.Linear(self.bond_dim, self.head_hidden_dim),
+                nn.ReLU(),
+                nn.Dropout(p = self.head_dropout),
+                nn.Linear(self.head_hidden_dim, self.n_classes),
+            )
+
+        raise ValueError("Expected head_type to be 'linear' or 'mlp'.")
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         root_vec = self.network(x) # deberia obtener un tensor [B, bond_dim]

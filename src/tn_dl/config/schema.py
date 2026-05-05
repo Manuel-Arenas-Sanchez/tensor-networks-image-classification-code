@@ -34,6 +34,11 @@ class ModelConfig:
     aim_kernel_size: int = 3
     aim_use_ln: bool = True
 
+    # Hiperparametros de la cabeza de clasificacion
+    head_type: str = "linear" # "linear" o "mlp"
+    head_hidden_dim: int = 32
+    head_dropout: float = 0.0
+
 @dataclass(slots=True)
 class TrainingConfig:
     epochs: int
