@@ -4,9 +4,9 @@ Bachelor's Thesis (TFG) project exploring tensor-network-based machine learning
 for image classification.
 
 The project started with Oxford Flowers 102 as a preliminary benchmark. The
-current main dataset is Chemistry Lab Apparatus / ChemEq25, converted from an
-object-detection dataset into an instance-classification problem by cropping
-each annotated laboratory object.
+current main dataset is Chemistry Lab Apparatus / ChemEq25, introduced by
+Hossain et al. (2025), converted from an object-detection dataset into an
+instance-classification problem by cropping each annotated laboratory object.
 
 ## Current Status
 
@@ -72,7 +72,7 @@ keeps the model trainable.
 
 ### AIM Spatial Front-End
 
-The project now includes an AIM front-end inspired by:
+The project now includes an AIM front-end inspired by Nie et al. (2025):
 
 > Deep Tree Tensor Networks for Image Recognition
 
@@ -470,6 +470,9 @@ ChemEq25 is expected as a local dataset and is not downloaded automatically.
 The project uses the official train/valid/test folders and creates one
 classification sample per annotated object.
 
+The dataset comes from Hossain et al. (2025), "Real-world chemistry lab image
+dataset for equipment recognition across 25 apparatus categories".
+
 Expected manual layout:
 
 ```text
@@ -533,6 +536,39 @@ GitHub: [Manuel-Arenas-Sanchez](https://github.com/Manuel-Arenas-Sanchez)
 
 Bachelor's Thesis (TFG), BSc Physics.  
 Universidad Europea de Madrid. Internship at ITCL.
+
+## References
+
+This project uses ChemEq25 / Chemistry Lab Apparatus as the main laboratory
+image dataset:
+
+```bibtex
+@article{hossain2025realworld,
+  title        = {Real-world chemistry lab image dataset for equipment recognition across 25 apparatus categories},
+  author       = {Hossain, Md. Sakhawat and Haque, Md. Sadman and Rahman, Md. Mostafizur and Mousum, Md. Mosaddik Mashrafi and Razzaque, Zobaer Ibn and Robin, Robiul Awoul and Rahman, Raiyan and Noor, Jannatun},
+  journal      = {Scientific Data},
+  volume       = {12},
+  pages        = {1747},
+  year         = {2025},
+  publisher    = {Nature Portfolio},
+  doi          = {10.1038/s41597-025-05952-3}
+}
+```
+
+The AIM-inspired image embedding used before the tensor-network classifier is
+based on the DTTN paper:
+
+```bibtex
+@misc{nie2025deeptreetensornetworks,
+  title         = {Deep Tree Tensor Networks for Image Recognition},
+  author        = {Chang Nie and Junfang Chen and Yajie Chen},
+  year          = {2025},
+  eprint        = {2502.09928},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.CV},
+  url           = {https://arxiv.org/abs/2502.09928}
+}
+```
 
 ## Notes
 
