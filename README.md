@@ -1,27 +1,28 @@
-# Tensor Network-Based Machine Learning - Flowers Benchmark
+# Tensor Network-Based Machine Learning - Image Classification Benchmarks
 
 Bachelor's Thesis (TFG) project exploring tensor-network-based machine learning
 for image classification.
 
-The current benchmark is Oxford Flowers 102. The long-term goal is to use this
-benchmark to validate the pipeline, architectures and methodology before moving
-to domain-specific laboratory imaging data.
+The project started with Oxford Flowers 102 as a preliminary benchmark. The
+current main dataset is Chemistry Lab Apparatus / ChemEq25, converted from an
+object-detection dataset into an instance-classification problem by cropping
+each annotated laboratory object.
 
 ## Current Status
 
-The repository contains an end-to-end training pipeline for Flowers 102 with:
+The repository contains an end-to-end training pipeline with:
 
 - a reference Matrix Product State (MPS) baseline based on TensorKrowch;
 - a custom hierarchical Tree Tensor Network (TTN);
 - a hybrid TTN implementation with PyTorch transformations between tensor
   network levels;
 - an AIM-based spatial front-end inspired by the DTTN paper;
-- YAML-driven experiments, checkpointing, metrics CSVs and loss-curve plots.
+- YAML-driven experiments, checkpointing, metrics CSVs and loss-curve plots;
+- dataset audits for both Flowers 102 and ChemEq25 crops.
 
-The most important current result is that the custom TTN is no longer merely a
-synthetic prototype: it trains end-to-end on Flowers 102. A longer run showed
-that it learns the training set but overfits, so the current research focus is
-improving generalization.
+Flowers 102 remains as a useful preliminary benchmark. ChemEq25 is now the main
+TFG dataset: the model classifies object crops generated from YOLO annotations,
+using AIM + HybridCustomTTN as the primary architecture.
 
 ## Goals
 
@@ -31,6 +32,7 @@ improving generalization.
 - Develop and analyze a custom TTN architecture.
 - Improve the TTN with spatial inductive bias before flattening images into
   tensor-network sequences.
+- Evaluate tensor-network architectures on real laboratory apparatus images.
 - Produce training curves and experimental evidence suitable for the TFG memory.
 
 ## Main Ideas
@@ -96,6 +98,7 @@ sharing.
 ## Current Progress
 
 - [x] Oxford Flowers 102 data pipeline.
+- [x] ChemEq25 / Lab Apparatus crop dataset for instance classification.
 - [x] YAML configuration system.
 - [x] Reference MPS baseline through TensorKrowch.
 - [x] `TrigPixelEmbedding`.
@@ -111,13 +114,15 @@ sharing.
 - [x] `LossTracker` writing `metrics.csv` and `loss_curve.png`.
 - [x] AIM2D layer.
 - [x] AIMPatchEmbedding.
-- [x] Planned integration for `embedding_name: aim_patch`.
-- [x] Learning-rate scheduler design with `ReduceLROnPlateau`.
-- [ ] Smoke run for AIM + TTN + scheduler.
-- [ ] Full AIM + TTN training run.
-- [ ] Data augmentation for Flowers 102.
+- [x] Integration for `embedding_name: aim_patch`.
+- [x] Learning-rate scheduler with `ReduceLROnPlateau`.
+- [x] Data augmentation and richer metrics for Flowers 102.
+- [x] Classification diagnostics and data audits.
+- [x] ChemEq25-specific audit with crop samples and bbox overlays.
+- [x] Smoke checks for ChemEq25 dataloaders and AIM + TTN forward/backward.
+- [ ] Full AIM + TTN training run on ChemEq25 crops.
 - [ ] Comparison against the MPS baseline.
-- [ ] Migration to laboratory imaging datasets.
+- [ ] ChemEq25 MPS and TTN baseline comparisons.
 
 ## Project Structure
 
@@ -125,11 +130,12 @@ sharing.
 src/tn_dl/
 |-- cli/            # train, eval and SLURM entry points
 |-- config/         # dataclass schema and YAML loader
-|-- data/           # Oxford Flowers dataset and dataloaders
+|-- data/           # Flowers and Lab Apparatus datasets/dataloaders
 |-- embeddings/     # TrigPixelEmbedding, PatchEmbedding, AIMPatchEmbedding
 |-- layers/         # MPS baseline, AIM2D and custom TTN layers
 |-- models/         # ImageClassifier and build_model factory
 |-- training/       # training loop, evaluation, checkpoints, loss tracking
+|-- evaluation/     # diagnostics, data audits and Lab Apparatus audit
 `-- utils/          # device, I/O and seeding helpers
 
 configs/
@@ -139,12 +145,12 @@ configs/
 
 ## Pipeline
 
-1. Data loading: Oxford Flowers 102 images are resized/cropped to 224 x 224,
-   converted to tensors and normalized.
+1. Data loading: images or object crops are resized to 224 x 224, converted to
+   tensors and normalized.
 2. Embedding: each image becomes a sequence `[B, sequence_length, local_dim]`.
 3. Tensor network layer: the embedded sequence is processed by either the MPS
    baseline or the custom TTN.
-4. Classification: the final representation is mapped to 102 flower classes.
+4. Classification: the final representation is mapped to the dataset classes.
 5. Training: AdamW, cross-entropy loss, checkpointing, CSV metrics and loss
    plots.
 
@@ -257,6 +263,8 @@ reacts to validation behavior instead of training loss alone.
 
 ## Example Config: AIM + TTN
 
+Flowers 102:
+
 ```yaml
 name: flowers_aim_ttn
 seed: 7
@@ -301,6 +309,52 @@ io:
   metrics_name: metrics.csv
 ```
 
+ChemEq25 crop classification:
+
+```yaml
+name: ChemEq
+seed: 7
+device: auto
+
+data:
+  dataset: lab_apparatus_crop
+  data_dir: ChemistryLabApparatus-25
+  batch_size: 16
+  num_workers: 0
+  smoke_samples:
+  download: false
+
+model:
+  embedding_name: aim_patch
+  layer_name: custom_ttn
+  input_shape: [3, 224, 224]
+  local_dim: 8
+  bond_dim: 8
+  n_classes: 25
+  patch_size: 16
+  linearization_order: zigzag
+  aim_channels: 32
+  num_aim_blocks: 3
+  aim_expansion_ratio: 3
+  aim_kernel_size: 3
+  aim_use_ln: true
+
+training:
+  epochs: 100
+  learning_rate: 0.0005
+  weight_decay: 0.002
+  log_every_n_steps: 100
+  scheduler_name: reduce_on_plateau
+  scheduler_factor: 0.5
+  scheduler_patience: 4
+  scheduler_min_lr: 0.000001
+
+io:
+  root_dir: runs
+  checkpoint_name: best.pt
+  metrics_name: metrics.csv
+```
+
 ## Running
 
 Install the package in editable mode:
@@ -321,6 +375,12 @@ Train the AIM + TTN experiment:
 python -m tn_dl.cli.train --config configs/experiments/flowers_aim_ttn.yaml
 ```
 
+Train the ChemEq25 AIM + TTN crop-classification experiment:
+
+```bash
+python -m tn_dl.cli.train --config configs/experiments/ChemEq.yaml
+```
+
 Evaluate a checkpoint:
 
 ```bash
@@ -335,6 +395,35 @@ Each run directory contains:
 - `metrics.csv`;
 - `loss_curve.png`;
 - resolved `config.yaml`.
+
+## Data Audits
+
+The audit CLI dispatches automatically from `data.dataset`.
+
+Flowers 102:
+
+```bash
+python -m tn_dl.cli.audit \
+  --config configs/experiments/flowers_aim_ttn.yaml \
+  --output-dir audit_flowers
+```
+
+ChemEq25 crops:
+
+```bash
+python -m tn_dl.cli.audit \
+  --config configs/experiments/ChemEq.yaml \
+  --output-dir audit_lab
+```
+
+The ChemEq25 audit writes:
+
+- `class_counts_by_split.csv`;
+- `object_counts_by_split.csv`;
+- `image_object_count_distribution.csv`;
+- `bbox_size_distribution.csv`;
+- `crop_samples.png`;
+- `bbox_overlay_samples.png`.
 
 ## Useful Synthetic Checks
 
@@ -358,6 +447,8 @@ python -c "import torch; from pathlib import Path; from tn_dl.config.loader impo
 
 ## Dataset
 
+### Oxford Flowers 102
+
 Oxford Flowers 102 is downloaded automatically when `data.download: true` is
 set in the YAML config.
 
@@ -372,6 +463,40 @@ flower_data/
 Dataset source:
 
 <https://www.robots.ox.ac.uk/~vgg/data/flowers/102/>
+
+### Chemistry Lab Apparatus / ChemEq25
+
+ChemEq25 is expected as a local dataset and is not downloaded automatically.
+The project uses the official train/valid/test folders and creates one
+classification sample per annotated object.
+
+Expected manual layout:
+
+```text
+ChemistryLabApparatus-25/
+|-- data.yaml
+|-- Metadata.csv
+|-- train/
+|   |-- images/
+|   `-- labels/
+|-- valid/
+|   |-- images/
+|   `-- labels/
+`-- test/
+    |-- images/
+    `-- labels/
+```
+
+YOLO bbox labels and YOLO polygon labels are both supported. Polygon labels are
+converted to their enclosing bounding box before cropping.
+
+Validated crop counts:
+
+```text
+train = 4863
+valid = 1393
+test  = 704
+```
 
 ## Tech Stack
 
