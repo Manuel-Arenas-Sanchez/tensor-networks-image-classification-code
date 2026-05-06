@@ -5,6 +5,7 @@ from pathlib import Path
 
 from tn_dl.config import load_experiment_config, load_runtime_config, resolve_experiment_config
 from tn_dl.training import evaluate
+from tn_dl.training.engine import _load_checkpoint, _prime_model
 
 
 def main() -> None:
@@ -31,7 +32,6 @@ def main() -> None:
         dataloaders = build_dataloaders(resolved.data)
         model = build_model(resolved.model).to(device)
 
-        from tn_dl.training.engine import _prime_model, _load_checkpoint
         _prime_model(model, resolved, device)
         _load_checkpoint(
             checkpoint_path = args.checkpoint,
@@ -60,7 +60,11 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--checkpoint", type=Path, required=True, help="Checkpoint to evaluate.")
     parser.add_argument("--device", type=str, help="Device override: auto, cpu or cuda.")
     parser.add_argument("--output-dir", type=Path, help="Override the run root directory.")
-    parser.add_argument("--diagnostics", action = "store_true", help = "Generate per-class diagnostics.")
+    parser.add_argument(
+        "--diagnostics",
+        action = "store_true",
+        help = "Generate per-class diagnostics.",
+    )
     return parser
 
 

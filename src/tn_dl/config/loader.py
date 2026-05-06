@@ -106,16 +106,28 @@ def _parse_model_config(payload: dict[str, Any]) -> ModelConfig:
 
 def _parse_training_config(payload: dict[str, Any]) -> TrainingConfig:
     resume_checkpoint = payload.get("resume_checkpoint")
+    epochs = _require_int(payload, "epochs")
+    warmup_epochs = _parse_nonnegative_int(
+        payload.get("warmup_epochs"), 0, "warmup_epochs"
+    )
+
+    if warmup_epochs > epochs:
+        raise ValueError("Expected 'warmup_epochs' to be <= 'epochs'.")
+
     return TrainingConfig(
-        epochs=_require_int(payload, "epochs"),
+        epochs=epochs,
         learning_rate=float(payload["learning_rate"]),
         weight_decay=float(payload.get("weight_decay", 0.0)),
         log_every_n_steps=int(payload.get("log_every_n_steps", 10)),
         resume_checkpoint=Path(resume_checkpoint) if resume_checkpoint else None,
-        scheduler_name = _optional_str(payload.get("scheduler_name")),
-        scheduler_factor = float(payload.get("scheduler_factor", 0.5)),
-        scheduler_patience = int(payload.get("scheduler_patience", 5)),
-        scheduler_min_lr = float(payload.get("scheduler_min_lr", 1e-6))
+        warmup_epochs=warmup_epochs,
+        warmup_start_factor=_parse_warmup_start_factor(
+            payload.get("warmup_start_factor")
+        ),
+        scheduler_name=_optional_str(payload.get("scheduler_name")),
+        scheduler_factor=float(payload.get("scheduler_factor", 0.5)),
+        scheduler_patience=int(payload.get("scheduler_patience", 5)),
+        scheduler_min_lr=float(payload.get("scheduler_min_lr", 1e-6)),
     )
 
 
@@ -240,3 +252,17 @@ def _optional_bool_with_default(value: Any, default: bool, key: str) -> bool:
     if not isinstance(value, bool):
         raise ValueError(f"Expected '{key}' to be a boolean.")
     return value
+
+def _parse_nonnegative_int(value: Any, default: int, key: str) -> int:
+    parsed = _optional_int_with_default(value, default, key)
+    if parsed < 0:
+        raise ValueError(f"Expected '{key}' to be >= 0.")
+    return parsed
+
+def _parse_warmup_start_factor(value: Any) -> float:
+    if value is None:
+        return 0.2
+    factor = float(value)
+    if not 0.0 < factor <= 1.0:
+        raise ValueError("Expected 'warmup_start_factor' to be in the interval (0, 1].")
+    return factor

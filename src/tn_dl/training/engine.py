@@ -124,6 +124,21 @@ def train(config: ExperimentConfig) -> TrainingArtifacts:
             config.training.epochs,
         )
 
+        in_warmup = _apply_warmup_lr(
+            optimizer = optimizer,
+            config = config,
+            epoch = epoch,
+        )
+        epoch_lr = optimizer.param_groups[0]["lr"]
+
+        if in_warmup:
+            logger.info(
+                "Warmup learning rate: epoch %s/%s, lr = %.8f",
+                epoch + 1,
+                config.training.warmup_epochs,
+                epoch_lr,
+            )
+
         train_metrics = _run_training_epoch(
             model=model,
             dataloader=dataloaders.train_loader,
@@ -141,7 +156,7 @@ def train(config: ExperimentConfig) -> TrainingArtifacts:
 
         current_lr = optimizer.param_groups[0]["lr"]
 
-        if scheduler is not None:
+        if scheduler is not None and not in_warmup:
             scheduler.step(eval_metrics.loss)
             new_lr = optimizer.param_groups[0]["lr"]
 
@@ -173,7 +188,7 @@ def train(config: ExperimentConfig) -> TrainingArtifacts:
             eval_top5_accuracy = eval_metrics.top5_accuracy,
             mean_confidence_correct = eval_metrics.mean_confidence_correct,
             mean_confidence_wrong = eval_metrics.mean_confidence_wrong,
-            learning_rate = optimizer.param_groups[0]["lr"]
+            learning_rate = epoch_lr,
         )
 
         if eval_metrics.accuracy >= best_accuracy:
@@ -267,6 +282,49 @@ def _build_scheduler(
         patience = config.training.scheduler_patience,
         min_lr = config.training.scheduler_min_lr,
     )
+
+def _apply_warmup_lr(
+    optimizer: torch.optim.Optimizer,
+    config: ExperimentConfig,
+    epoch: int,
+) -> bool:
+    warmup_epochs = config.training.warmup_epochs
+
+    if warmup_epochs <= 0:
+        return False
+    if epoch < warmup_epochs:
+        lr = _compute_warmup_lr(
+            base_lr = config.training.learning_rate,
+            warmup_start_factor = config.training.warmup_start_factor,
+            epoch = epoch,
+            warmup_epochs = warmup_epochs,
+        )
+        _set_optimizer_lr(optimizer, lr)
+        return True
+    if epoch == warmup_epochs:
+        _set_optimizer_lr(optimizer, config.training.learning_rate)
+
+    return False
+
+
+def _compute_warmup_lr(
+    base_lr: float,
+    warmup_start_factor: float,
+    epoch: int,
+    warmup_epochs: int,
+) -> float:
+    if warmup_epochs <= 1:
+        return base_lr
+
+    progress = epoch / (warmup_epochs - 1)
+    factor = warmup_start_factor + progress * (1.0 - warmup_start_factor)
+    return base_lr * factor
+
+
+def _set_optimizer_lr(optimizer: torch.optim.Optimizer, lr: float) -> None:
+    for param_group in optimizer.param_groups:
+        param_group["lr"] = lr
+
 
 def _prepare_run_dir(config: ExperimentConfig) -> Path:
     if config.training.resume_checkpoint is not None:

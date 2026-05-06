@@ -156,9 +156,24 @@ def build_flowers_dataloaders(data_config):
     eval_dataset = build_flowers_dataset(data_config, train = False, indices = eval_indices)
     test_dataset = build_flowers_dataset(data_config, train = False, indices = test_indices)
 
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=data_config.batch_size, shuffle=True, num_workers=data_config.num_workers)
-    eval_loader = torch.utils.data.DataLoader(eval_dataset, batch_size=data_config.batch_size, shuffle=False, num_workers=data_config.num_workers)
-    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=data_config.batch_size, shuffle=False, num_workers=data_config.num_workers)
+    train_loader = torch.utils.data.DataLoader(
+        train_dataset,
+        batch_size=data_config.batch_size,
+        shuffle=True,
+        num_workers=data_config.num_workers,
+    )
+    eval_loader = torch.utils.data.DataLoader(
+        eval_dataset,
+        batch_size=data_config.batch_size,
+        shuffle=False,
+        num_workers=data_config.num_workers,
+    )
+    test_loader = torch.utils.data.DataLoader(
+        test_dataset,
+        batch_size=data_config.batch_size,
+        shuffle=False,
+        num_workers=data_config.num_workers,
+    )
 
     logger.info(
         "Split Flowers creado: train = %s, eval = %s, test = %s, batch_size = %s",

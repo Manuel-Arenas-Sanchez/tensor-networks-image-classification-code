@@ -47,6 +47,9 @@ class TrainingConfig:
     log_every_n_steps: int = 10
     resume_checkpoint: Path | None = None
 
+    warmup_epochs: int = 0
+    warmup_start_factor: float = 0.2
+
     scheduler_name: str | None = None
     scheduler_factor: float = 0.5
     scheduler_patience: int = 5

@@ -116,11 +116,12 @@ sharing.
 - [x] AIMPatchEmbedding.
 - [x] Integration for `embedding_name: aim_patch`.
 - [x] Learning-rate scheduler with `ReduceLROnPlateau`.
+- [x] Optional linear learning-rate warmup before `ReduceLROnPlateau`.
 - [x] Data augmentation and richer metrics for Flowers 102.
 - [x] Classification diagnostics and data audits.
 - [x] ChemEq25-specific audit with crop samples and bbox overlays.
 - [x] Smoke checks for ChemEq25 dataloaders and AIM + TTN forward/backward.
-- [ ] Full AIM + TTN training run on ChemEq25 crops.
+- [x] Full AIM + TTN training run on ChemEq25 crops.
 - [ ] Comparison against the MPS baseline.
 - [ ] ChemEq25 MPS and TTN baseline comparisons.
 
@@ -233,7 +234,7 @@ final grid.
 
 ## Learning-Rate Scheduler
 
-The planned scheduler is:
+The scheduler is:
 
 ```yaml
 scheduler_name: reduce_on_plateau
@@ -260,6 +261,22 @@ This means:
 whenever `eval_loss` reaches a plateau, never going below `scheduler_min_lr`.
 This is useful here because the main problem is generalization, so the scheduler
 reacts to validation behavior instead of training loss alone.
+
+## Learning-Rate Warmup
+
+Training can optionally start with a linear warmup before
+`ReduceLROnPlateau` is allowed to act:
+
+```yaml
+warmup_epochs: 5
+warmup_start_factor: 0.2
+```
+
+For example, with `learning_rate: 0.00025`, this starts at
+`0.00025 * 0.2 = 0.00005` and increases linearly until reaching `0.00025` at
+the end of the warmup window. If `warmup_epochs` is omitted, it defaults to `0`
+and training behaves as before, using the configured `learning_rate` from the
+first epoch.
 
 ## Example Config: AIM + TTN
 
@@ -344,6 +361,8 @@ training:
   learning_rate: 0.0005
   weight_decay: 0.002
   log_every_n_steps: 100
+  warmup_epochs: 5
+  warmup_start_factor: 0.2
   scheduler_name: reduce_on_plateau
   scheduler_factor: 0.5
   scheduler_patience: 4
@@ -378,7 +397,20 @@ python -m tn_dl.cli.train --config configs/experiments/flowers_aim_ttn.yaml
 Train the ChemEq25 AIM + TTN crop-classification experiment:
 
 ```bash
-python -m tn_dl.cli.train --config configs/experiments/ChemEq.yaml
+python -m tn_dl.cli.train --config configs/experiments/ChemEq_exp1.yaml
+```
+
+Run the two ChemEq25 experiments in parallel inside one SLURM allocation:
+
+```bash
+sbatch scripts/train_ChemEq.sbatch
+```
+
+The batch script launches:
+
+```text
+configs/experiments/ChemEq_exp1.yaml
+configs/experiments/ChemEq_exp2.yaml
 ```
 
 Evaluate a checkpoint:
@@ -412,7 +444,7 @@ ChemEq25 crops:
 
 ```bash
 python -m tn_dl.cli.audit \
-  --config configs/experiments/ChemEq.yaml \
+  --config configs/experiments/ChemEq_exp1.yaml \
   --output-dir audit_lab
 ```
 
