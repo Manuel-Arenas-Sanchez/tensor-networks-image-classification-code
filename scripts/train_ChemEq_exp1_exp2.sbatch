@@ -1,29 +1,43 @@
 #!/bin/bash
 #SBATCH --job-name=ChemEq_2exp
 #SBATCH --gres=gpu:1
-#SBATCH --cpus-per-task=8
+#SBATCH --cpus-per-task=12
 #SBATCH --mem=32G
 #SBATCH --time=12:00:00
 #SBATCH --output=logs/ChemEq_2exp_%j.out
 #SBATCH --error=logs/ChemEq_2exp_%j.err
 
+set -euo pipefail
+
+cd "${SLURM_SUBMIT_DIR:-$PWD}"
 mkdir -p logs
 
 echo "Job ID: $SLURM_JOB_ID"
 echo "Node: $SLURM_NODELIST"
 echo "Starting at: $(date)"
 echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
+echo "CPUs per task: ${SLURM_CPUS_PER_TASK:-unknown}"
+
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export NUMEXPR_NUM_THREADS=1
+export PYTHONUNBUFFERED=1
+
+nvidia-smi || true
 
 # Si usas entorno virtual, descomenta y ajusta esto:
 source .venv/bin/activate
 
-python -m tn_dl.cli.train --config configs/experiments/ChemEq_exp1.yaml \
+python -u -m tn_dl.cli.train --config configs/experiments/ChemEq_exp1.yaml \
   > logs/ChemEq_exp1_${SLURM_JOB_ID}.out \
   2> logs/ChemEq_exp1_${SLURM_JOB_ID}.err &
 
 PID1=$!
 
-python -m tn_dl.cli.train --config configs/experiments/ChemEq_exp2.yaml \
+sleep 10
+
+python -u -m tn_dl.cli.train --config configs/experiments/ChemEq_exp2.yaml \
   > logs/ChemEq_exp2_${SLURM_JOB_ID}.out \
   2> logs/ChemEq_exp2_${SLURM_JOB_ID}.err &
 

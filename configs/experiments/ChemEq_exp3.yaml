@@ -1,4 +1,4 @@
-name: ChemEq_exp1
+name: ChemEq_exp3
 seed: 24
 device: auto
 
@@ -6,7 +6,7 @@ data:
   dataset: lab_apparatus_crop
   data_dir: ChemistryLabApparatus-25
   batch_size: 16
-  num_workers: 0
+  num_workers: 4
   smoke_samples:
   download: false
   image_size: 224
