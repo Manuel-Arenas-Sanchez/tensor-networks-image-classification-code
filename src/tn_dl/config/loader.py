@@ -62,6 +62,14 @@ def _read_yaml(path: Path) -> dict[str, Any]:
 
 
 def _parse_data_config(payload: dict[str, Any]) -> DataConfig:
+    image_size = int(payload.get("image_size", 224))
+    crop_margin = float(payload.get("crop_margin", 0.05))
+
+    if image_size <= 0:
+        raise ValueError("Expected 'image_size' to be > 0.")
+    if crop_margin < 0.0:
+        raise ValueError("Expected 'crop_margin' to be >= 0.")
+    
     return DataConfig(
         dataset=_require_str(payload, "dataset"),
         data_dir=Path(_require_str(payload, "data_dir")),
@@ -69,6 +77,9 @@ def _parse_data_config(payload: dict[str, Any]) -> DataConfig:
         num_workers=int(payload.get("num_workers", 0)),
         smoke_samples=_optional_int(payload.get("smoke_samples")),
         download=bool(payload.get("download", True)),
+        image_size = image_size,
+        crop_margin = crop_margin,
+        preserve_aspect_ratio = bool(payload.get("preserve_aspect_ratio", False)),
     )
 
 
@@ -120,9 +131,16 @@ def _parse_training_config(payload: dict[str, Any]) -> TrainingConfig:
         weight_decay=float(payload.get("weight_decay", 0.0)),
         log_every_n_steps=int(payload.get("log_every_n_steps", 10)),
         resume_checkpoint=Path(resume_checkpoint) if resume_checkpoint else None,
+        warmup_name=_parse_warmup_name(payload.get("warmup_name")),
         warmup_epochs=warmup_epochs,
         warmup_start_factor=_parse_warmup_start_factor(
             payload.get("warmup_start_factor")
+        ),
+        regularization_name=_parse_regularization_name(
+            payload.get("regularization_name")
+        ),
+        regularization_lambda=_parse_nonnegative_float(
+            payload.get("regularization_lambda"), 0.0, "regularization_lambda"
         ),
         scheduler_name=_optional_str(payload.get("scheduler_name")),
         scheduler_factor=float(payload.get("scheduler_factor", 0.5)),
@@ -266,3 +284,34 @@ def _parse_warmup_start_factor(value: Any) -> float:
     if not 0.0 < factor <= 1.0:
         raise ValueError("Expected 'warmup_start_factor' to be in the interval (0, 1].")
     return factor
+
+def _parse_warmup_name(value: Any) -> str:
+    if value is None:
+        return "linear"
+    if not isinstance(value, str):
+        raise ValueError("Expected 'warmup_name' to be a string.")
+    normalized = value.lower()
+    if normalized not in ("none", "linear", "cosine"):
+        raise ValueError("Expected 'warmup_name' to be 'none', 'linear', or 'cosine'.")
+    return normalized
+
+def _parse_regularization_name(value: Any) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError("Expected 'regularization_name' to be a string.")
+    normalized = value.lower()
+    if normalized in ("none", "null"):
+        return None
+    if normalized not in ("l2",):
+        raise ValueError("Expected 'regularization_name' to be None or 'l2'.")
+    return normalized
+
+
+def _parse_nonnegative_float(value: Any, default: float, key: str) -> float:
+    if value is None:
+        return default
+    parsed = float(value)
+    if parsed < 0.0:
+        raise ValueError(f"Expected '{key}' to be >= 0.")
+    return parsed

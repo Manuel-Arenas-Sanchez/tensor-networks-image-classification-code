@@ -87,16 +87,79 @@ class LabApparatusCropDataset(torch.utils.data.Dataset):
     def get_metadata(self, index: int) -> LabApparatusSample:
         return self.samples[index]
 
-def build_lab_apparatus_transform(train: bool = False):
+class ResizeWithPadding:
+    """
+    Redimensiona manteniendo aspect ratio y rellena hasta un cuadrado.
+
+    El padding usa aproximadamente la media ImageNet en RGB, de modo que tras Normalize queda cerca
+    de cero y no introduce bordes negros dominantes.
+    """
+
+    def __init__(
+            self,
+            size: int,
+            fill: tuple[int, int, int] = (124, 116, 104),
+    ) -> None:
+        self.size = size
+        self.fill = fill
+    
+    def __call__(self, image: Image.Image) -> Image.Image:
+        width, height = image.size
+
+        scale = min(self.size / width, self.size / height)
+        new_width = max(1, round(width * scale))
+        new_height = max(1, round(height * scale))
+
+        resized = image.resize(
+            (new_width, new_height),
+            resample = Image.Resampling.BICUBIC,
+        )
+
+        canvas = Image.new("RGB", (self.size, self.size), self.fill)
+        left = (self.size - new_width) // 2
+        top = (self.size - new_height) // 2
+        canvas.paste(resized, (left, top))
+
+        return canvas
+
+def build_lab_apparatus_transform(
+        train: bool = False,
+        *,
+        image_size: int = 224,
+        preserve_aspect_ratio: bool = False,
+    ):
+
     normalize = torchvision.transforms.Normalize(
         mean = [0.485, 0.456, 0.406],
         std = [0.229, 0.224, 0.225]
     )
 
+    if preserve_aspect_ratio:
+        resize_transform = ResizeWithPadding(image_size)
+    else:
+        resize_transform = torchvision.transforms.Resize(
+            (image_size, image_size),
+            interpolation = torchvision.transforms.InterpolationMode.BICUBIC,
+        )
+
     if train:
+        if preserve_aspect_ratio:
+            return torchvision.transforms.Compose([
+                resize_transform,
+                torchvision.transforms.RandomHorizontalFlip(p = 0.5),
+                torchvision.transforms.ColorJitter(
+                    brightness = 0.2,
+                    contrast = 0.2,
+                    saturation = 0.15,
+                    hue = 0.03,
+                ),
+                torchvision.transforms.ToTensor(),
+                normalize,
+            ])
+        
         return torchvision.transforms.Compose([
             torchvision.transforms.RandomResizedCrop(
-                224,
+                image_size,
                 scale = (0.85, 1.0),
                 ratio = (0.8, 1.25),
                 interpolation = torchvision.transforms.InterpolationMode.BICUBIC,
@@ -112,15 +175,10 @@ def build_lab_apparatus_transform(train: bool = False):
             normalize,
         ])
     
-    # En crops de objetos prefiero no hacer CenterCrop porque objetos como las pipetas, matraces,
-    # buretas...etc. Esos objetos que son muy alargados, un crop central podría cortar las piezas.
     return torchvision.transforms.Compose([
-        torchvision.transforms.Resize(
-            (224, 224),
-            interpolation = torchvision.transforms.InterpolationMode.BICUBIC,
-        ),
-        torchvision.transforms.ToTensor(),
-        normalize,
+       resize_transform,
+       torchvision.transforms.ToTensor(),
+       normalize,
     ])
 
 def build_lab_apparatus_dataset(data_config, split: str, train: bool = False):
@@ -129,12 +187,16 @@ def build_lab_apparatus_dataset(data_config, split: str, train: bool = False):
             "download = True se ignora para Lab Apparatus: se espera el dataset local."
         )
     
-    transform = build_lab_apparatus_transform(train = train)
+    transform = build_lab_apparatus_transform(
+        train = train,
+        image_size = getattr(data_config, "image_size", 224),
+        preserve_aspect_ratio = getattr(data_config, "preserve_aspect_ratio", False),
+    )
     dataset = LabApparatusCropDataset(
         root_dir = data_config.data_dir,
         split = split,
         transform = transform,
-        crop_margin = 0.05,
+        crop_margin = getattr(data_config, "crop_margin", 0.05),
         max_samples = getattr(data_config, "smoke_samples", None),
     )
 

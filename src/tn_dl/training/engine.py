@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import TypeAlias
 
 import torch
 from torch import nn
@@ -16,6 +18,11 @@ from tn_dl.utils.io import create_run_dir, write_yaml_file
 from tn_dl.utils.seed import seed_everything
 
 logger = logging.getLogger(__name__)
+
+SchedulerType: TypeAlias = (
+    torch.optim.lr_scheduler.LRScheduler
+    | torch.optim.lr_scheduler.ReduceLROnPlateau
+)
 
 @dataclass(slots=True)
 class TrainingArtifacts:
@@ -145,6 +152,7 @@ def train(config: ExperimentConfig) -> TrainingArtifacts:
             criterion=criterion,
             optimizer=optimizer,
             device=device,
+            config = config,
             log_every_n_steps = config.training.log_every_n_steps,
         )
         eval_metrics = _run_evaluation(
@@ -157,7 +165,11 @@ def train(config: ExperimentConfig) -> TrainingArtifacts:
         current_lr = optimizer.param_groups[0]["lr"]
 
         if scheduler is not None and not in_warmup:
-            scheduler.step(eval_metrics.loss)
+            _step_scheduler(
+                scheduler = scheduler,
+                config = config,
+                eval_loss = eval_metrics.loss,
+            )
             new_lr = optimizer.param_groups[0]["lr"]
 
             if new_lr != current_lr:
@@ -253,35 +265,71 @@ def evaluate(config: ExperimentConfig, checkpoint_path: Path) -> EpochMetrics:
     )
 
 def _build_scheduler(
-        optimizer: torch.optim.Optimizer,
-        config: ExperimentConfig,
-) -> torch.optim.lr_scheduler.ReduceLROnPlateau | None:
+    optimizer: torch.optim.Optimizer,
+    config: ExperimentConfig,
+) -> SchedulerType | None:
     """
     Construye el scheduler del learning rate si la config lo pide.
 
-    De momento usamos ReduceLROnPlateau porque el criterio natural aquí es eval_loss: si la perdida
-    de evaluación deja de mejorar, reducimos el paso del optimiador.
+    Opciones:
+        - reduce_on_plateau:
+            baja el lr cuando eval_loss deja de mejorar.
 
-    Esto encaja especialmente bien con Flowers102, donde el problema observado no era solo aprender
-    train, sino controlar la generalización.
+        - warmup_cosine:
+            después del warmup, baja el lr suavemente con cosine decay desde learning_rate hasta
+            scheduler_min_lr.
     """
     scheduler_name = config.training.scheduler_name
 
     if scheduler_name is None:
         return None
-    
-    if scheduler_name != "reduce_on_plateau":
-        raise ValueError(
-            "Unsupported scheduler_name. Use None or 'reduce_on_plateau'."
+
+    if scheduler_name == "reduce_on_plateau":
+        return torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer,
+            mode="min",
+            factor=config.training.scheduler_factor,
+            patience=config.training.scheduler_patience,
+            min_lr=config.training.scheduler_min_lr,
         )
-    
-    return torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer,
-        mode = "min",
-        factor = config.training.scheduler_factor,
-        patience = config.training.scheduler_patience,
-        min_lr = config.training.scheduler_min_lr,
+
+    if scheduler_name == "warmup_cosine":
+        cosine_epochs = max(
+            1,
+            config.training.epochs - config.training.warmup_epochs,
+        )
+        return torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer,
+            T_max=cosine_epochs,
+            eta_min=config.training.scheduler_min_lr,
+        )
+
+    raise ValueError(
+        "Unsupported scheduler_name. Use None, 'reduce_on_plateau' or 'warmup_cosine'."
     )
+
+
+def _step_scheduler(
+    scheduler: SchedulerType,
+    config: ExperimentConfig,
+    eval_loss: float,
+) -> None:
+    if config.training.scheduler_name == "reduce_on_plateau":
+        if not isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+            raise TypeError("Expected ReduceLROnPlateau scheduler.")
+        scheduler.step(eval_loss)
+        return
+
+    if config.training.scheduler_name == "warmup_cosine":
+        if isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+            raise TypeError("Expected epoch-based LR scheduler.")
+        scheduler.step()
+        return
+
+    raise ValueError(
+        "Unsupported scheduler_name. Use None, 'reduce_on_plateau' or 'warmup_cosine'."
+    )
+
 
 def _apply_warmup_lr(
     optimizer: torch.optim.Optimizer,
@@ -290,14 +338,15 @@ def _apply_warmup_lr(
 ) -> bool:
     warmup_epochs = config.training.warmup_epochs
 
-    if warmup_epochs <= 0:
+    if warmup_epochs <= 0 or config.training.warmup_name == "none":
         return False
     if epoch < warmup_epochs:
         lr = _compute_warmup_lr(
-            base_lr = config.training.learning_rate,
-            warmup_start_factor = config.training.warmup_start_factor,
-            epoch = epoch,
-            warmup_epochs = warmup_epochs,
+            base_lr=config.training.learning_rate,
+            warmup_name=config.training.warmup_name,
+            warmup_start_factor=config.training.warmup_start_factor,
+            epoch=epoch,
+            warmup_epochs=warmup_epochs,
         )
         _set_optimizer_lr(optimizer, lr)
         return True
@@ -308,7 +357,9 @@ def _apply_warmup_lr(
 
 
 def _compute_warmup_lr(
+    *,
     base_lr: float,
+    warmup_name: str,
     warmup_start_factor: float,
     epoch: int,
     warmup_epochs: int,
@@ -317,8 +368,17 @@ def _compute_warmup_lr(
         return base_lr
 
     progress = epoch / (warmup_epochs - 1)
-    factor = warmup_start_factor + progress * (1.0 - warmup_start_factor)
-    return base_lr * factor
+
+    if warmup_name == "linear":
+        factor = warmup_start_factor + progress * (1.0 - warmup_start_factor)
+        return base_lr * factor
+
+    if warmup_name == "cosine":
+        cosine_progress = 0.5 * (1.0 - math.cos(math.pi * progress))
+        factor = warmup_start_factor + cosine_progress * (1.0 - warmup_start_factor)
+        return base_lr * factor
+
+    raise ValueError("Unsupported warmup_name. Use 'linear' or 'cosine'.")
 
 
 def _set_optimizer_lr(optimizer: torch.optim.Optimizer, lr: float) -> None:
@@ -348,6 +408,7 @@ def _run_training_epoch(
     criterion: nn.Module,
     optimizer: torch.optim.Optimizer,
     device: torch.device,
+    config: ExperimentConfig,
     log_every_n_steps: int,
 ) -> EpochMetrics:
     model.train()
@@ -362,14 +423,20 @@ def _run_training_epoch(
 
         optimizer.zero_grad(set_to_none=True)
         logits = model(images)
-        loss = criterion(logits, labels)
+        ce_loss = criterion(logits, labels)
+        regularization_loss = _compute_regularization_loss(
+            model = model,
+            config = config,
+            device = device,
+        )
+        loss = ce_loss + regularization_loss
         loss.backward()
         optimizer.step()
 
         predictions = logits.argmax(dim = 1)
         batch_size = labels.size(0)
 
-        total_loss += loss.item() * batch_size
+        total_loss += ce_loss.item() * batch_size
         total_items += batch_size
         total_correct += int((predictions == labels).sum().item())
 
@@ -393,6 +460,35 @@ def _run_training_epoch(
         mean_confidence_correct = 0.0,
         mean_confidence_wrong = 0.0,
     )
+
+
+def _compute_regularization_loss(
+    model: nn.Module,
+    config: ExperimentConfig,
+    device: torch.device,
+) -> torch.Tensor:
+    regularization_name = config.training.regularization_name
+    regularization_lambda = config.training.regularization_lambda
+
+    if regularization_name is None or regularization_lambda == 0.0:
+        return torch.zeros((), device=device)
+
+    if regularization_name == "l2":
+        penalty = torch.zeros((), device=device)
+
+        for name, parameter in model.named_parameters():
+            if not parameter.requires_grad:
+                continue
+            if parameter.ndim <= 1:
+                continue
+            if "norm" in name.lower():
+                continue
+
+            penalty = penalty + parameter.pow(2).sum()
+
+        return regularization_lambda * penalty
+
+    raise ValueError("Unsupported regularization_name. Use None or 'l2'.")
 
 
 def _run_evaluation(
@@ -457,7 +553,7 @@ def _save_checkpoint(
     checkpoint_path: Path,
     model: nn.Module,
     optimizer: torch.optim.Optimizer,
-    scheduler: torch.optim.lr_scheduler.ReduceLROnPlateau | None,
+    scheduler: SchedulerType | None,
     epoch: int,
     best_accuracy: float,
 ) -> None:
@@ -476,7 +572,7 @@ def _load_checkpoint(
     checkpoint_path: Path,
     model: nn.Module,
     optimizer: torch.optim.Optimizer | None,
-    scheduler: torch.optim.lr_scheduler.ReduceLROnPlateau | None,
+    scheduler: SchedulerType | None,
     device: torch.device,
 ) -> tuple[int, float]:
     

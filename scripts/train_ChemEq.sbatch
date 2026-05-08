@@ -15,7 +15,7 @@ echo "Starting at: $(date)"
 echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 
 # Si usas entorno virtual, descomenta y ajusta esto:
-# source .venv/bin/activate
+source .venv/bin/activate
 
 python -m tn_dl.cli.train --config configs/experiments/ChemEq_exp1.yaml \
   > logs/ChemEq_exp1_${SLURM_JOB_ID}.out \
