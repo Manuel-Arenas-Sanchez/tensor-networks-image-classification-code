@@ -1,4 +1,4 @@
-name: ChemEq_exp2
+name: ChemEq_ls003_seed24
 seed: 24
 device: auto
 
@@ -38,15 +38,19 @@ training:
   learning_rate: 0.00025
   weight_decay: 0.002
   log_every_n_steps: 100
-  warmup_name: linear
+
+  warmup_name: cosine
   warmup_epochs: 5
   warmup_start_factor: 0.2
+
+  regularization_name: l2
+  regularization_lambda: 0.000001
+  label_smoothing: 0.03
+
   scheduler_name: reduce_on_plateau
   scheduler_factor: 0.5
   scheduler_patience: 4
   scheduler_min_lr: 0.000001
-  regularization_name: l2
-  regularization_lambda: 0.000005
 
 io:
   root_dir: runs

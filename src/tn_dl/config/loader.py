@@ -142,6 +142,7 @@ def _parse_training_config(payload: dict[str, Any]) -> TrainingConfig:
         regularization_lambda=_parse_nonnegative_float(
             payload.get("regularization_lambda"), 0.0, "regularization_lambda"
         ),
+        label_smoothing=_parse_label_smoothing(payload.get("label_smoothing")),
         scheduler_name=_optional_str(payload.get("scheduler_name")),
         scheduler_factor=float(payload.get("scheduler_factor", 0.5)),
         scheduler_patience=int(payload.get("scheduler_patience", 5)),
@@ -315,3 +316,11 @@ def _parse_nonnegative_float(value: Any, default: float, key: str) -> float:
     if parsed < 0.0:
         raise ValueError(f"Expected '{key}' to be >= 0.")
     return parsed
+
+def _parse_label_smoothing(value: Any) -> float:
+    if value is None:
+        return 0.0
+    smoothing = float(value)
+    if not 0.0 <= smoothing < 1.0:
+        raise ValueError("Expected 'label_smoothing' to be in the interval [0, 1).")
+    return smoothing

@@ -37,6 +37,7 @@ def test_load_experiment_config_parses_nested_types(tmp_path: Path) -> None:
                 "  epochs: 2",
                 "  learning_rate: 0.001",
                 "  weight_decay: 0.0",
+                "  label_smoothing: 0.05",
                 "  log_every_n_steps: 1",
                 "io:",
                 "  root_dir: runs",
@@ -54,6 +55,7 @@ def test_load_experiment_config_parses_nested_types(tmp_path: Path) -> None:
     assert config.data.data_dir == Path("data")
     assert config.model.input_shape == (1, 28, 28)
     assert config.training.epochs == 2
+    assert config.training.label_smoothing == 0.05
     assert config.io.root_dir == Path("runs")
 
 
@@ -124,3 +126,4 @@ def test_load_runtime_config_and_resolve_overrides(tmp_path: Path) -> None:
     assert resolved.device == "cpu"
     assert resolved.io.root_dir == tmp_path / "artifacts"
     assert resolved.runtime.output_root == Path("cluster_runs")
+    assert resolved.training.label_smoothing == 0.0

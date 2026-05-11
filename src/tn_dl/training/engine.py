@@ -92,11 +92,14 @@ def train(config: ExperimentConfig) -> TrainingArtifacts:
     )
 
     scheduler = _build_scheduler(
-        optimizer = optimizer,
-        config = config,
+        optimizer=optimizer,
+        config=config,
     )
 
-    criterion = nn.CrossEntropyLoss()
+    train_criterion = nn.CrossEntropyLoss(
+        label_smoothing=config.training.label_smoothing,
+    )
+    eval_criterion = nn.CrossEntropyLoss()
     run_dir = _prepare_run_dir(config)
     checkpoint_path = run_dir / config.io.checkpoint_name
     metrics_path = run_dir / config.io.metrics_name
@@ -108,8 +111,8 @@ def train(config: ExperimentConfig) -> TrainingArtifacts:
     logger.info("Checkpoint path: %s", checkpoint_path)
 
     loss_tracker = LossTracker(
-        metrics_path = metrics_path,
-        plot_path= loss_plot_path,
+        metrics_path=metrics_path,
+        plot_path=loss_plot_path,
     )
     write_yaml_file(resolved_config_path, asdict(config))
 
@@ -120,7 +123,7 @@ def train(config: ExperimentConfig) -> TrainingArtifacts:
             checkpoint_path=config.training.resume_checkpoint,
             model=model,
             optimizer=optimizer,
-            scheduler = scheduler,
+            scheduler=scheduler,
             device=device,
         )
 
@@ -132,9 +135,9 @@ def train(config: ExperimentConfig) -> TrainingArtifacts:
         )
 
         in_warmup = _apply_warmup_lr(
-            optimizer = optimizer,
-            config = config,
-            epoch = epoch,
+            optimizer=optimizer,
+            config=config,
+            epoch=epoch,
         )
         epoch_lr = optimizer.param_groups[0]["lr"]
 
@@ -149,16 +152,16 @@ def train(config: ExperimentConfig) -> TrainingArtifacts:
         train_metrics = _run_training_epoch(
             model=model,
             dataloader=dataloaders.train_loader,
-            criterion=criterion,
+            criterion=train_criterion,
             optimizer=optimizer,
             device=device,
-            config = config,
-            log_every_n_steps = config.training.log_every_n_steps,
+            config=config,
+            log_every_n_steps=config.training.log_every_n_steps,
         )
         eval_metrics = _run_evaluation(
             model=model,
             dataloader=dataloaders.eval_loader,
-            criterion=criterion,
+            criterion=eval_criterion,
             device=device,
         )
 
@@ -166,9 +169,9 @@ def train(config: ExperimentConfig) -> TrainingArtifacts:
 
         if scheduler is not None and not in_warmup:
             _step_scheduler(
-                scheduler = scheduler,
-                config = config,
-                eval_loss = eval_metrics.loss,
+                scheduler=scheduler,
+                config=config,
+                eval_loss=eval_metrics.loss,
             )
             new_lr = optimizer.param_groups[0]["lr"]
 
@@ -176,11 +179,11 @@ def train(config: ExperimentConfig) -> TrainingArtifacts:
                 logger.info(
                     "Scheduler reduce learning rate: %.8f -> %.8f",
                     current_lr,
-                    new_lr
+                    new_lr,
                 )
-        
+
         logger.info(
-            "Epoch %s/%s finalizada: train_loss = %.6f, train_accuracy = %.4f, " 
+            "Epoch %s/%s finalizada: train_loss = %.6f, train_accuracy = %.4f, "
             "eval_loss = %.6f, eval_accuracy = %.4f, eval_top5_accuracy = %.4f",
             epoch + 1,
             config.training.epochs,
@@ -209,7 +212,7 @@ def train(config: ExperimentConfig) -> TrainingArtifacts:
                 checkpoint_path=checkpoint_path,
                 model=model,
                 optimizer=optimizer,
-                scheduler = scheduler,
+                scheduler=scheduler,
                 epoch=epoch + 1,
                 best_accuracy=best_accuracy,
             )

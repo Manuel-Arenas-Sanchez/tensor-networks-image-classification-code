@@ -56,6 +56,7 @@ class TrainingConfig:
 
     regularization_name: str | None = None
     regularization_lambda: float = 0.0
+    label_smoothing: float = 0.0
 
     scheduler_name: str | None = None
     scheduler_factor: float = 0.5

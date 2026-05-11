@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 import torch
-from torch.utils.data import TensorDataset
+from torch.utils.data import DataLoader, TensorDataset
 
 from tn_dl.config import (
     DataConfig,
@@ -15,19 +15,33 @@ from tn_dl.config import (
     SlurmConfig,
     TrainingConfig,
 )
-from tn_dl.data.registry import DATASET_REGISTRY
-from tn_dl.training import evaluate, train
+from tn_dl.data import DataLoaders
+from tn_dl.training import engine, evaluate, train
 
 
-def _build_fake_dataset(_: DataConfig, train: bool) -> TensorDataset:
-    generator = torch.Generator().manual_seed(123 if train else 456)
+def _build_fake_dataset(seed: int) -> TensorDataset:
+    generator = torch.Generator().manual_seed(seed)
     images = torch.rand(12, 1, 28, 28, generator=generator)
     labels = torch.randint(0, 10, (12,), generator=generator)
     return TensorDataset(images, labels)
 
 
+def _build_fake_dataloaders(data_config: DataConfig) -> DataLoaders:
+    return DataLoaders(
+        train_loader=DataLoader(
+            _build_fake_dataset(seed=123),
+            batch_size=data_config.batch_size,
+        ),
+        eval_loader=DataLoader(
+            _build_fake_dataset(seed=456),
+            batch_size=data_config.batch_size,
+        ),
+        test_loader=None,
+    )
+
+
 def test_train_and_evaluate_smoke_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setitem(DATASET_REGISTRY, "mnist", _build_fake_dataset)
+    monkeypatch.setattr(engine, "build_dataloaders", _build_fake_dataloaders)
     config = ExperimentConfig(
         name="smoke",
         seed=3,
