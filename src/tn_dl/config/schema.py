@@ -15,6 +15,10 @@ class DataConfig:
     image_size: int = 224
     crop_margin: float = 0.05
     preserve_aspect_ratio: bool = False
+    augmentation_name: str = "basic"
+    rotation_degrees: float = 0.0
+    random_erasing_p: float = 0.0
+
 
 
 @dataclass(slots=True)

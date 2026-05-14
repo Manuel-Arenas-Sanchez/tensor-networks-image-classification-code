@@ -80,6 +80,9 @@ def _parse_data_config(payload: dict[str, Any]) -> DataConfig:
         image_size = image_size,
         crop_margin = crop_margin,
         preserve_aspect_ratio = bool(payload.get("preserve_aspect_ratio", False)),
+        augmentation_name=str(payload.get("augmentation_name", "basic")),
+        rotation_degrees=float(payload.get("rotation_degrees", 0.0)),
+        random_erasing_p=float(payload.get("random_erasing_p", 0.0)),
     )
 
 

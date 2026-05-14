@@ -1,5 +1,5 @@
-name: ChemEq_ls005_seed24
-seed: 24
+name: ChemEq_exp15
+seed: 69
 device: auto
 
 data:
@@ -7,11 +7,13 @@ data:
   data_dir: ChemistryLabApparatus-25
   batch_size: 16
   num_workers: 4
-  smoke_samples:
   download: false
   image_size: 224
-  crop_margin: 0.10
+  crop_margin: 0.1
   preserve_aspect_ratio: true
+  augmentation_name: light
+  rotation_degrees: 7.0
+  random_erasing_p: 0.10
 
 model:
   embedding_name: aim_patch
@@ -22,13 +24,11 @@ model:
   n_classes: 25
   patch_size: 16
   linearization_order: zigzag
-
   aim_channels: 32
   num_aim_blocks: 3
   aim_expansion_ratio: 3
   aim_kernel_size: 3
   aim_use_ln: true
-
   head_type: linear
   head_hidden_dim: 32
   head_dropout: 0.0
@@ -38,19 +38,16 @@ training:
   learning_rate: 0.00025
   weight_decay: 0.002
   log_every_n_steps: 100
-
   warmup_name: cosine
   warmup_epochs: 5
   warmup_start_factor: 0.2
-
   regularization_name: l2
-  regularization_lambda: 0.000001
+  regularization_lambda: 1.0e-06
   label_smoothing: 0.05
-
   scheduler_name: reduce_on_plateau
   scheduler_factor: 0.5
   scheduler_patience: 4
-  scheduler_min_lr: 0.000001
+  scheduler_min_lr: 1.0e-06
 
 io:
   root_dir: runs

@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import logging
 import math
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import torch
 import torchvision
@@ -127,6 +129,9 @@ def build_lab_apparatus_transform(
         *,
         image_size: int = 224,
         preserve_aspect_ratio: bool = False,
+        augmentation_name: str = "basic",
+        rotation_degrees: float = 0.0,
+        random_erasing_p: float = 0.0,
     ):
 
     normalize = torchvision.transforms.Normalize(
@@ -144,42 +149,74 @@ def build_lab_apparatus_transform(
 
     if train:
         if preserve_aspect_ratio:
-            return torchvision.transforms.Compose([
-                resize_transform,
-                torchvision.transforms.RandomHorizontalFlip(p = 0.5),
+            transform_steps: list[Callable[[Any], Any]] = [resize_transform]
+        else:
+            transform_steps = [
+                torchvision.transforms.RandomResizedCrop(
+                    image_size,
+                    scale = (0.85, 1.0),
+                    ratio = (0.8, 1.25),
+                    interpolation = torchvision.transforms.InterpolationMode.BICUBIC,
+                )
+            ]
+
+        if augmentation_name in ("basic", "light"):
+            if augmentation_name == "light" and rotation_degrees > 0.0:
+                transform_steps.append(
+                    torchvision.transforms.RandomRotation(
+                        degrees = rotation_degrees,
+                        interpolation = torchvision.transforms.InterpolationMode.BICUBIC,
+                        fill = 124,
+                    )
+                )
+
+            transform_steps.extend([
+                torchvision.transforms.RandomHorizontalFlip(p=0.5),
                 torchvision.transforms.ColorJitter(
                     brightness = 0.2,
                     contrast = 0.2,
                     saturation = 0.15,
                     hue = 0.03,
                 ),
-                torchvision.transforms.ToTensor(),
-                normalize,
             ])
-        
-        return torchvision.transforms.Compose([
-            torchvision.transforms.RandomResizedCrop(
-                image_size,
-                scale = (0.85, 1.0),
-                ratio = (0.8, 1.25),
-                interpolation = torchvision.transforms.InterpolationMode.BICUBIC,
-            ),
-            torchvision.transforms.RandomHorizontalFlip(p=0.5),
-            torchvision.transforms.ColorJitter(
-                brightness = 0.2,
-                contrast = 0.2,
-                saturation = 0.15,
-                hue = 0.03,
-            ),
+
+            if augmentation_name == "light":
+                transform_steps.append(
+                    torchvision.transforms.RandomAffine(
+                        degrees = 0,
+                        translate = (0.03, 0.03),
+                        scale = (0.95, 1.05),
+                        interpolation = torchvision.transforms.InterpolationMode.BICUBIC,
+                        fill = 124,
+                    )
+                )
+
+        elif augmentation_name != "none":
+            raise ValueError("Expected augmentation_name to be 'none', 'basic' or 'light'.")
+
+        transform_steps.extend([
             torchvision.transforms.ToTensor(),
             normalize,
         ])
-    
+
+        if augmentation_name == "light" and random_erasing_p > 0.0:
+            transform_steps.append(
+                torchvision.transforms.RandomErasing(
+                    p=random_erasing_p,
+                    scale = (0.01, 0.04),
+                    ratio = (0.3, 3.3),
+                    value = 0,
+                )
+            )
+
+        return torchvision.transforms.Compose(transform_steps)
+
     return torchvision.transforms.Compose([
        resize_transform,
        torchvision.transforms.ToTensor(),
        normalize,
     ])
+
 
 def build_lab_apparatus_dataset(data_config, split: str, train: bool = False):
     if getattr(data_config, "download", False):
@@ -188,10 +225,14 @@ def build_lab_apparatus_dataset(data_config, split: str, train: bool = False):
         )
     
     transform = build_lab_apparatus_transform(
-        train = train,
-        image_size = getattr(data_config, "image_size", 224),
-        preserve_aspect_ratio = getattr(data_config, "preserve_aspect_ratio", False),
+        train=train,
+        image_size=getattr(data_config, "image_size", 224),
+        preserve_aspect_ratio=getattr(data_config, "preserve_aspect_ratio", False),
+        augmentation_name=getattr(data_config, "augmentation_name", "basic"),
+        rotation_degrees=getattr(data_config, "rotation_degrees", 0.0),
+        random_erasing_p=getattr(data_config, "random_erasing_p", 0.0),
     )
+
     dataset = LabApparatusCropDataset(
         root_dir = data_config.data_dir,
         split = split,
