@@ -20,9 +20,9 @@ from tn_dl.utils.seed import seed_everything
 logger = logging.getLogger(__name__)
 
 SchedulerType: TypeAlias = (
-    torch.optim.lr_scheduler.LRScheduler
-    | torch.optim.lr_scheduler.ReduceLROnPlateau
+    torch.optim.lr_scheduler.LRScheduler | torch.optim.lr_scheduler.ReduceLROnPlateau
 )
+
 
 @dataclass(slots=True)
 class TrainingArtifacts:
@@ -44,15 +44,20 @@ class EpochMetrics:
         - top5_accuracy: si la clase correcta aparece entre las 5 más probables.
         - mean_confidence_correct: confianza media cuando acierta.
         - mean_confidence_wrong: confianza media cuando falla.
-    
+
     Las confianzas ayudan a detectar sobreconfianza: si el modelo falla con probabilidad muy alta,
     CrossEntropyLoss suele crecer mucho aunque la accuracy no cambie tanto.
     """
+
     loss: float
     accuracy: float
     top5_accuracy: float
+    macro_precision: float
+    macro_recall: float
+    macro_f1: float
     mean_confidence_correct: float
     mean_confidence_wrong: float
+
 
 def train(config: ExperimentConfig) -> TrainingArtifacts:
     seed_everything(config.seed)
@@ -195,15 +200,21 @@ def train(config: ExperimentConfig) -> TrainingArtifacts:
         )
 
         loss_tracker.record_epoch(
-            epoch = epoch + 1,
-            train_loss = train_metrics.loss,
-            train_accuracy = train_metrics.accuracy,
-            eval_loss = eval_metrics.loss,
-            eval_accuracy = eval_metrics.accuracy,
-            eval_top5_accuracy = eval_metrics.top5_accuracy,
-            mean_confidence_correct = eval_metrics.mean_confidence_correct,
-            mean_confidence_wrong = eval_metrics.mean_confidence_wrong,
-            learning_rate = epoch_lr,
+            epoch=epoch + 1,
+            train_loss=train_metrics.loss,
+            train_accuracy=train_metrics.accuracy,
+            eval_loss=eval_metrics.loss,
+            eval_accuracy=eval_metrics.accuracy,
+            eval_top5_accuracy=eval_metrics.top5_accuracy,
+            train_macro_precision=train_metrics.macro_precision,
+            train_macro_recall=train_metrics.macro_recall,
+            train_macro_f1=train_metrics.macro_f1,
+            eval_macro_precision=eval_metrics.macro_precision,
+            eval_macro_recall=eval_metrics.macro_recall,
+            eval_macro_f1=eval_metrics.macro_f1,
+            mean_confidence_correct=eval_metrics.mean_confidence_correct,
+            mean_confidence_wrong=eval_metrics.mean_confidence_wrong,
+            learning_rate=epoch_lr,
         )
 
         if eval_metrics.accuracy >= best_accuracy:
@@ -221,24 +232,25 @@ def train(config: ExperimentConfig) -> TrainingArtifacts:
                 best_accuracy,
             )
     from tn_dl.evaluation import write_classification_diagnostics
+
     diagnostics_dir = run_dir / "diagnostics"
     logger.info("Generando diagnósticos por clase en %s", diagnostics_dir)
     _load_checkpoint(
-        checkpoint_path = checkpoint_path,
-        model = model,
-        optimizer = None,
-        scheduler = None,
-        device = device,
+        checkpoint_path=checkpoint_path,
+        model=model,
+        optimizer=None,
+        scheduler=None,
+        device=device,
     )
     write_classification_diagnostics(
-        model = model,
-        dataloader = dataloaders.eval_loader,
-        device = device,
-        n_classes = config.model.n_classes,
-        output_dir = diagnostics_dir,
+        model=model,
+        dataloader=dataloaders.eval_loader,
+        device=device,
+        n_classes=config.model.n_classes,
+        output_dir=diagnostics_dir,
     )
     logger.info("Diagnósticos guardados.")
-            
+
     return TrainingArtifacts(
         run_dir=run_dir,
         best_checkpoint=checkpoint_path,
@@ -253,12 +265,9 @@ def evaluate(config: ExperimentConfig, checkpoint_path: Path) -> EpochMetrics:
     dataloaders = build_dataloaders(config.data)
     model = build_model(config.model).to(device)
     _prime_model(model, config, device)
-    _load_checkpoint(checkpoint_path=checkpoint_path,
-                     model=model,
-                     optimizer=None,
-                     scheduler=None,
-                     device=device
-                )
+    _load_checkpoint(
+        checkpoint_path=checkpoint_path, model=model, optimizer=None, scheduler=None, device=device
+    )
     criterion = nn.CrossEntropyLoss()
     return _run_evaluation(
         model=model,
@@ -266,6 +275,7 @@ def evaluate(config: ExperimentConfig, checkpoint_path: Path) -> EpochMetrics:
         criterion=criterion,
         device=device,
     )
+
 
 def _build_scheduler(
     optimizer: torch.optim.Optimizer,
@@ -419,8 +429,9 @@ def _run_training_epoch(
     total_items = 0
     total_correct = 0
     num_batches = len(dataloader)
+    confusion: torch.Tensor | None = None
 
-    for step, (images, labels) in enumerate(dataloader, start = 1):
+    for step, (images, labels) in enumerate(dataloader, start=1):
         images = images.to(device)
         labels = labels.to(device=device, dtype=torch.long)
 
@@ -428,20 +439,26 @@ def _run_training_epoch(
         logits = model(images)
         ce_loss = criterion(logits, labels)
         regularization_loss = _compute_regularization_loss(
-            model = model,
-            config = config,
-            device = device,
+            model=model,
+            config=config,
+            device=device,
         )
         loss = ce_loss + regularization_loss
         loss.backward()
         optimizer.step()
 
-        predictions = logits.argmax(dim = 1)
+        predictions = logits.argmax(dim=1)
         batch_size = labels.size(0)
 
         total_loss += ce_loss.item() * batch_size
         total_items += batch_size
         total_correct += int((predictions == labels).sum().item())
+        confusion = _update_confusion_matrix(
+            confusion=confusion,
+            labels=labels,
+            predictions=predictions,
+            n_classes=logits.shape[1],
+        )
 
         if log_every_n_steps > 0 and (
             step == 1 or step % log_every_n_steps == 0 or step == num_batches
@@ -455,13 +472,18 @@ def _run_training_epoch(
                 running_loss,
                 running_accuracy,
             )
-    
+
+    macro_precision, macro_recall, macro_f1 = _compute_macro_metrics(confusion)
+
     return EpochMetrics(
-        loss = total_loss / max(total_items, 1),
-        accuracy = total_correct / max(total_items, 1),
-        top5_accuracy = 0.0,
-        mean_confidence_correct = 0.0,
-        mean_confidence_wrong = 0.0,
+        loss=total_loss / max(total_items, 1),
+        accuracy=total_correct / max(total_items, 1),
+        top5_accuracy=0.0,
+        macro_precision=macro_precision,
+        macro_recall=macro_recall,
+        macro_f1=macro_f1,
+        mean_confidence_correct=0.0,
+        mean_confidence_wrong=0.0,
     )
 
 
@@ -505,6 +527,7 @@ def _run_evaluation(
     total_items = 0
     total_correct = 0
     total_top5_correct = 0
+    confusion: torch.Tensor | None = None
 
     confidence_correct_sum = 0.0
     confidence_wrong_sum = 0.0
@@ -519,11 +542,11 @@ def _run_evaluation(
             logits = model(images)
             loss = criterion(logits, labels)
 
-            probabilities = torch.softmax(logits, dim = 1)
-            confidences, predictions = probabilities.max(dim = 1)
+            probabilities = torch.softmax(logits, dim=1)
+            confidences, predictions = probabilities.max(dim=1)
 
             k = min(5, logits.shape[1])
-            top5_predictions = logits.topk(k = k, dim = 1).indices
+            top5_predictions = logits.topk(k=k, dim=1).indices
             top5_matches = top5_predictions.eq(labels.unsqueeze(1)).any(dim=1)
 
             correct_mask = predictions == labels
@@ -534,21 +557,73 @@ def _run_evaluation(
             total_items += batch_size
             total_correct += int(correct_mask.sum().item())
             total_top5_correct += int(top5_matches.sum().item())
+            confusion = _update_confusion_matrix(
+                confusion=confusion,
+                labels=labels,
+                predictions=predictions,
+                n_classes=logits.shape[1],
+            )
 
             if correct_mask.any():
                 confidence_correct_sum += float(confidences[correct_mask].sum().item())
                 num_correct += int(correct_mask.sum().item())
-            
+
             if wrong_mask.any():
                 confidence_wrong_sum += float(confidences[wrong_mask].sum().item())
                 num_wrong += int(wrong_mask.sum().item())
 
+    macro_precision, macro_recall, macro_f1 = _compute_macro_metrics(confusion)
+
     return EpochMetrics(
-        loss = total_loss / max(total_items, 1),
-        accuracy = total_correct / max(total_items, 1),
-        top5_accuracy = total_top5_correct / max(total_items, 1),
-        mean_confidence_correct = confidence_correct_sum / max(num_correct, 1),
-        mean_confidence_wrong = confidence_wrong_sum / max(num_wrong, 1),
+        loss=total_loss / max(total_items, 1),
+        accuracy=total_correct / max(total_items, 1),
+        top5_accuracy=total_top5_correct / max(total_items, 1),
+        macro_precision=macro_precision,
+        macro_recall=macro_recall,
+        macro_f1=macro_f1,
+        mean_confidence_correct=confidence_correct_sum / max(num_correct, 1),
+        mean_confidence_wrong=confidence_wrong_sum / max(num_wrong, 1),
+    )
+
+
+def _update_confusion_matrix(
+    *,
+    confusion: torch.Tensor | None,
+    labels: torch.Tensor,
+    predictions: torch.Tensor,
+    n_classes: int,
+) -> torch.Tensor:
+    if confusion is None:
+        confusion = torch.zeros((n_classes, n_classes), dtype=torch.long)
+
+    labels_cpu = labels.detach().cpu().long()
+    predictions_cpu = predictions.detach().cpu().long()
+    flat_indices = labels_cpu * n_classes + predictions_cpu
+    batch_counts = torch.bincount(
+        flat_indices,
+        minlength=n_classes * n_classes,
+    ).reshape(n_classes, n_classes)
+    confusion += batch_counts
+
+    return confusion
+
+
+def _compute_macro_metrics(confusion: torch.Tensor | None) -> tuple[float, float, float]:
+    if confusion is None:
+        return 0.0, 0.0, 0.0
+
+    true_positive = confusion.diag().float()
+    total_real = confusion.sum(dim=1).float()
+    total_predicted = confusion.sum(dim=0).float()
+
+    precision = true_positive / total_predicted.clamp_min(1.0)
+    recall = true_positive / total_real.clamp_min(1.0)
+    f1 = 2 * precision * recall / (precision + recall).clamp_min(1e-12)
+
+    return (
+        float(precision.mean().item()),
+        float(recall.mean().item()),
+        float(f1.mean().item()),
     )
 
 
@@ -578,7 +653,7 @@ def _load_checkpoint(
     scheduler: SchedulerType | None,
     device: torch.device,
 ) -> tuple[int, float]:
-    
+
     checkpoint = torch.load(checkpoint_path, map_location=device)
     try:
         model.load_state_dict(checkpoint["model_state_dict"])
@@ -590,6 +665,7 @@ def _load_checkpoint(
         scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
 
     return int(checkpoint.get("epoch", 0)), float(checkpoint.get("best_accuracy", float("-inf")))
+
 
 def _load_parameters_in_order(
     model: nn.Module,

@@ -86,5 +86,10 @@ def test_train_and_evaluate_smoke_run(tmp_path: Path, monkeypatch: pytest.Monkey
     assert artifacts.run_dir.exists()
     assert artifacts.best_checkpoint.exists()
     assert (artifacts.run_dir / "config.yaml").exists()
+    assert (artifacts.run_dir / "metric_curves.png").exists()
+    assert (artifacts.run_dir / "confidence_curves.png").exists()
+    assert (artifacts.run_dir / "diagnostics" / "summary_metrics.csv").exists()
+    assert (artifacts.run_dir / "diagnostics" / "precision_recall_curve.png").exists()
+    assert (artifacts.run_dir / "diagnostics" / "f1_confidence_curve.png").exists()
     assert 0.0 <= metrics.accuracy <= 1.0
     assert metrics.loss >= 0.0

@@ -21,6 +21,10 @@ def main() -> None:
     metrics = evaluate(resolved, checkpoint_path=args.checkpoint)
     print(f"Loss: {metrics.loss:.6f}")
     print(f"Accuracy: {metrics.accuracy:.4f}")
+    print(f"Top-5 accuracy: {metrics.top5_accuracy:.4f}")
+    print(f"Macro precision: {metrics.macro_precision:.4f}")
+    print(f"Macro recall: {metrics.macro_recall:.4f}")
+    print(f"Macro F1: {metrics.macro_f1:.4f}")
 
     if args.diagnostics:
         from tn_dl.data import build_dataloaders
@@ -34,24 +38,25 @@ def main() -> None:
 
         _prime_model(model, resolved, device)
         _load_checkpoint(
-            checkpoint_path = args.checkpoint,
-            model = model,
-            optimizer = None,
-            scheduler = None,
-            device = device,
+            checkpoint_path=args.checkpoint,
+            model=model,
+            optimizer=None,
+            scheduler=None,
+            device=device,
         )
 
         output_dir = args.checkpoint.parent / "diagnostics"
         eval_loader = dataloaders.eval_loader
 
         write_classification_diagnostics(
-            model = model,
-            dataloader = eval_loader,
-            device = device,
-            n_classes = resolved.model.n_classes,
-            output_dir = output_dir,
+            model=model,
+            dataloader=eval_loader,
+            device=device,
+            n_classes=resolved.model.n_classes,
+            output_dir=output_dir,
         )
         print(f"Diagnostics saved to: {output_dir}")
+
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Evaluate a tensor-network image classifier.")
@@ -62,8 +67,8 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-dir", type=Path, help="Override the run root directory.")
     parser.add_argument(
         "--diagnostics",
-        action = "store_true",
-        help = "Generate per-class diagnostics.",
+        action="store_true",
+        help="Generate per-class diagnostics.",
     )
     return parser
 

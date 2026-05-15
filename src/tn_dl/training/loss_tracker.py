@@ -16,27 +16,35 @@ class LossTracker:
     Archivos que genera:
         - metrics.csv: tabla con una fila por cada época
         - loss_curve.png: representación de la perdida entre train/eval en cada época.
-    
+
     Esto es útil para el TFG, porque podremos sacar información de nuestro entrenamiento.
     """
 
     def __init__(self, metrics_path: Path, plot_path: Path) -> None:
         self.metrics_path = metrics_path
         self.plot_path = plot_path
+        self.metric_plot_path = plot_path.with_name("metric_curves.png")
+        self.confidence_plot_path = plot_path.with_name("confidence_curves.png")
         self.rows: list[dict[str, float | int]] = []
 
     def record_epoch(
-            self,
-            *,
-            epoch: int,
-            train_loss: float,
-            train_accuracy: float,
-            eval_loss: float,
-            eval_accuracy: float,
-            eval_top5_accuracy: float,
-            mean_confidence_correct: float,
-            mean_confidence_wrong: float,
-            learning_rate: float,
+        self,
+        *,
+        epoch: int,
+        train_loss: float,
+        train_accuracy: float,
+        eval_loss: float,
+        eval_accuracy: float,
+        eval_top5_accuracy: float,
+        train_macro_precision: float,
+        train_macro_recall: float,
+        train_macro_f1: float,
+        eval_macro_precision: float,
+        eval_macro_recall: float,
+        eval_macro_f1: float,
+        mean_confidence_correct: float,
+        mean_confidence_wrong: float,
+        learning_rate: float,
     ) -> None:
         """
         Guarda una época de la metrica e inmediatamente guarda los resultados.
@@ -56,6 +64,12 @@ class LossTracker:
                 "eval_loss": eval_loss,
                 "eval_accuracy": eval_accuracy,
                 "eval_top5_accuracy": eval_top5_accuracy,
+                "train_macro_precision": train_macro_precision,
+                "train_macro_recall": train_macro_recall,
+                "train_macro_f1": train_macro_f1,
+                "eval_macro_precision": eval_macro_precision,
+                "eval_macro_recall": eval_macro_recall,
+                "eval_macro_f1": eval_macro_f1,
                 "mean_confidence_correct": mean_confidence_correct,
                 "mean_confidence_wrong": mean_confidence_wrong,
                 "learning_rate": learning_rate,
@@ -64,6 +78,8 @@ class LossTracker:
 
         self.write_csv()
         self.write_loss_plot()
+        self.write_metric_plot()
+        self.write_confidence_plot()
 
     def write_csv(self) -> None:
         """
@@ -72,13 +88,13 @@ class LossTracker:
         if not self.rows:
             self.metrics_path.write_text("", encoding="utf-8")
             return
-        
+
         fieldnames = list(self.rows[0].keys())
         with self.metrics_path.open("w", newline="", encoding="utf-8") as handle:
-            writer = csv.DictWriter(handle, fieldnames = fieldnames)
+            writer = csv.DictWriter(handle, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(self.rows)
-    
+
     def write_loss_plot(self) -> None:
         """
         Crea una gráfica en PNG con las curvas de la perdida en entrenamiento y la perdida en
@@ -87,20 +103,78 @@ class LossTracker:
 
         if not self.rows:
             return
-        
+
         epochs = [int(row["epoch"]) for row in self.rows]
         train_losses = [float(row["train_loss"]) for row in self.rows]
         eval_losses = [float(row["eval_loss"]) for row in self.rows]
 
-        plt.figure(figsize = (8, 5))
-        plt.plot(epochs, train_losses, marker = "o", label = "Train loss")
-        plt.plot(epochs, eval_losses, marker = "o", label = "Eval loss")
+        plt.figure(figsize=(8, 5))
+        plt.plot(epochs, train_losses, marker="o", label="Train loss")
+        plt.plot(epochs, eval_losses, marker="o", label="Eval loss")
 
         plt.xlabel("Epoch")
         plt.ylabel("Cross-entropy loss")
         plt.title("Training and validation loss")
-        plt.grid(True, alpha = 0.3)
+        plt.grid(True, alpha=0.3)
         plt.legend()
         plt.tight_layout()
-        plt.savefig(self.plot_path, dpi = 300)
+        plt.savefig(self.plot_path, dpi=300)
+        plt.close()
+
+    def write_metric_plot(self) -> None:
+        """
+        Crea una grafica con accuracy, top5 y F1 macro de evaluacion.
+        """
+
+        if not self.rows:
+            return
+
+        epochs = [int(row["epoch"]) for row in self.rows]
+        train_accuracy = [float(row["train_accuracy"]) for row in self.rows]
+        eval_accuracy = [float(row["eval_accuracy"]) for row in self.rows]
+        eval_top5 = [float(row["eval_top5_accuracy"]) for row in self.rows]
+        eval_macro_f1 = [float(row["eval_macro_f1"]) for row in self.rows]
+        eval_macro_recall = [float(row["eval_macro_recall"]) for row in self.rows]
+
+        plt.figure(figsize=(8, 5))
+        plt.plot(epochs, train_accuracy, label="Train accuracy")
+        plt.plot(epochs, eval_accuracy, label="Eval accuracy")
+        plt.plot(epochs, eval_top5, label="Eval top-5 accuracy")
+        plt.plot(epochs, eval_macro_f1, label="Eval macro F1")
+        plt.plot(epochs, eval_macro_recall, label="Eval macro recall")
+
+        plt.xlabel("Epoch")
+        plt.ylabel("Metric")
+        plt.title("Training and validation metrics")
+        plt.ylim(0.0, 1.02)
+        plt.grid(True, alpha=0.3)
+        plt.legend()
+        plt.tight_layout()
+        plt.savefig(self.metric_plot_path, dpi=300)
+        plt.close()
+
+    def write_confidence_plot(self) -> None:
+        """
+        Crea una grafica con la confianza media cuando el modelo acierta y falla.
+        """
+
+        if not self.rows:
+            return
+
+        epochs = [int(row["epoch"]) for row in self.rows]
+        correct = [float(row["mean_confidence_correct"]) for row in self.rows]
+        wrong = [float(row["mean_confidence_wrong"]) for row in self.rows]
+
+        plt.figure(figsize=(8, 5))
+        plt.plot(epochs, correct, label="Mean confidence correct")
+        plt.plot(epochs, wrong, label="Mean confidence wrong")
+
+        plt.xlabel("Epoch")
+        plt.ylabel("Confidence")
+        plt.title("Validation confidence")
+        plt.ylim(0.0, 1.02)
+        plt.grid(True, alpha=0.3)
+        plt.legend()
+        plt.tight_layout()
+        plt.savefig(self.confidence_plot_path, dpi=300)
         plt.close()
