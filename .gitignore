@@ -28,3 +28,12 @@ flower_data/
 History.txt
 ChemistryLabApparatus-25/
 audit_*/
+runs_local/
+runs_server/
+History.backup-before-reflow-20260515_083415.txt
+runs_server.zip
+runs.zip
+runs.ziptfg_dataset_figures/
+.tensor-network.editor/drafts/active.json
+tfg_dataset_figures/
+tfg_run_mosaics
