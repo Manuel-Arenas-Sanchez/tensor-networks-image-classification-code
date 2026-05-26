@@ -18,6 +18,7 @@ class DataConfig:
     augmentation_name: str = "basic"
     rotation_degrees: float = 0.0
     random_erasing_p: float = 0.0
+    normalization_name: str = "imagenet"
 
 
 

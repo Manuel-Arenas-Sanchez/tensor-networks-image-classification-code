@@ -5,8 +5,13 @@ from math import prod
 from torch import nn
 
 from tn_dl.config import ModelConfig
-from tn_dl.embeddings import AIMPatchEmbedding, PatchEmbedding, TrigPixelEmbedding
-from tn_dl.layers import MPSClassifier, MPSClassifier_1
+from tn_dl.embeddings import (
+    AIMPatchEmbedding,
+    FixedPatchTrigEmbedding,
+    PatchEmbedding,
+    TrigPixelEmbedding,
+)
+from tn_dl.layers import MeanPoolLinearClassifier, MPSClassifier, MPSClassifier_1
 from tn_dl.models.classifier import ImageClassifier
 
 
@@ -40,6 +45,22 @@ def build_model(config: ModelConfig) -> nn.Module:
             order = order,
             grid_h = grid_h,
             grid_w = grid_w
+        )
+        sequence_length = grid_h * grid_w
+    elif embedding_name == "fixed_patch_trig":
+        if config.patch_size is None:
+            raise ValueError("FixedPatchTrigEmbedding requires 'patch_size' in ModelConfig")
+        if height % config.patch_size != 0 or width % config.patch_size != 0:
+            raise ValueError("input_shape H and W must be divisible by patch_size.")
+        grid_h = height // config.patch_size
+        grid_w = width // config.patch_size
+        embedding = FixedPatchTrigEmbedding(
+            patch_size = config.patch_size,
+            local_dim = config.local_dim,
+            in_channels = in_channels,
+            order = order,
+            grid_h = grid_h,
+            grid_w = grid_w,
         )
         sequence_length = grid_h * grid_w
     elif embedding_name == "aim_patch":
@@ -88,6 +109,12 @@ def build_model(config: ModelConfig) -> nn.Module:
             head_type = config.head_type,
             head_hidden_dim = config.head_hidden_dim,
             head_dropout = config.head_dropout,
+        )
+    elif layer_name == "mean_pool_linear":
+        tensor_layer = MeanPoolLinearClassifier(
+            sequence_length = sequence_length,
+            local_dim = config.local_dim,
+            n_classes = config.n_classes,
         )
     else:
          raise ValueError(f"Unsupported tensor layer '{config.layer_name}'.")

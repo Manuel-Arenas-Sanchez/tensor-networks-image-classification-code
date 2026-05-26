@@ -26,6 +26,7 @@ def test_load_experiment_config_parses_nested_types(tmp_path: Path) -> None:
                 "  num_workers: 0",
                 "  smoke_samples: 16",
                 "  download: true",
+                "  normalization_name: none",
                 "model:",
                 "  embedding_name: trig",
                 "  layer_name: mps",
@@ -53,6 +54,7 @@ def test_load_experiment_config_parses_nested_types(tmp_path: Path) -> None:
     assert isinstance(config, ExperimentConfig)
     assert config.name == "demo"
     assert config.data.data_dir == Path("data")
+    assert config.data.normalization_name == "none"
     assert config.model.input_shape == (1, 28, 28)
     assert config.training.epochs == 2
     assert config.training.label_smoothing == 0.05
@@ -126,4 +128,5 @@ def test_load_runtime_config_and_resolve_overrides(tmp_path: Path) -> None:
     assert resolved.device == "cpu"
     assert resolved.io.root_dir == tmp_path / "artifacts"
     assert resolved.runtime.output_root == Path("cluster_runs")
+    assert resolved.data.normalization_name == "imagenet"
     assert resolved.training.label_smoothing == 0.0

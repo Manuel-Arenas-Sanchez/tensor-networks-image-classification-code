@@ -132,12 +132,10 @@ def build_lab_apparatus_transform(
         augmentation_name: str = "basic",
         rotation_degrees: float = 0.0,
         random_erasing_p: float = 0.0,
+        normalization_name: str = "imagenet",
     ):
 
-    normalize = torchvision.transforms.Normalize(
-        mean = [0.485, 0.456, 0.406],
-        std = [0.229, 0.224, 0.225]
-    )
+    normalize = _build_normalization_transform(normalization_name)
 
     if preserve_aspect_ratio:
         resize_transform = ResizeWithPadding(image_size)
@@ -194,10 +192,10 @@ def build_lab_apparatus_transform(
         elif augmentation_name != "none":
             raise ValueError("Expected augmentation_name to be 'none', 'basic' or 'light'.")
 
-        transform_steps.extend([
-            torchvision.transforms.ToTensor(),
-            normalize,
-        ])
+        transform_steps.append(torchvision.transforms.ToTensor())
+
+        if normalize is not None:
+            transform_steps.append(normalize)
 
         if augmentation_name == "light" and random_erasing_p > 0.0:
             transform_steps.append(
@@ -211,11 +209,15 @@ def build_lab_apparatus_transform(
 
         return torchvision.transforms.Compose(transform_steps)
 
-    return torchvision.transforms.Compose([
+    transform_steps = [
        resize_transform,
        torchvision.transforms.ToTensor(),
-       normalize,
-    ])
+    ]
+
+    if normalize is not None:
+        transform_steps.append(normalize)
+
+    return torchvision.transforms.Compose(transform_steps)
 
 
 def build_lab_apparatus_dataset(data_config, split: str, train: bool = False):
@@ -231,6 +233,7 @@ def build_lab_apparatus_dataset(data_config, split: str, train: bool = False):
         augmentation_name=getattr(data_config, "augmentation_name", "basic"),
         rotation_degrees=getattr(data_config, "rotation_degrees", 0.0),
         random_erasing_p=getattr(data_config, "random_erasing_p", 0.0),
+        normalization_name=getattr(data_config, "normalization_name", "imagenet"),
     )
 
     dataset = LabApparatusCropDataset(
@@ -294,6 +297,17 @@ def _normalize_split(split: str) -> str:
     if normalized not in ("train", "valid", "test"):
         raise ValueError("Expected split to be 'train', 'valid', 'eval' or 'test'.")
     return normalized
+
+def _build_normalization_transform(normalization_name: str):
+    normalized = normalization_name.lower()
+    if normalized == "none":
+        return None
+    if normalized == "imagenet":
+        return torchvision.transforms.Normalize(
+            mean = [0.485, 0.456, 0.406],
+            std = [0.229, 0.224, 0.225],
+        )
+    raise ValueError("Expected normalization_name to be 'imagenet' or 'none'.")
 
 def _load_class_names(root_dir: Path) -> list[str]:
     yaml_path = root_dir / "data.yaml"

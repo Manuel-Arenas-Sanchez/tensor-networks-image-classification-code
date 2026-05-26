@@ -83,6 +83,7 @@ def _parse_data_config(payload: dict[str, Any]) -> DataConfig:
         augmentation_name=str(payload.get("augmentation_name", "basic")),
         rotation_degrees=float(payload.get("rotation_degrees", 0.0)),
         random_erasing_p=float(payload.get("random_erasing_p", 0.0)),
+        normalization_name=_parse_normalization_name(payload.get("normalization_name")),
     )
 
 
@@ -238,6 +239,16 @@ def _parse_linearization_order(value: Any) -> str:
     normalized = value.lower()
     if normalized not in ("row", "zigzag"):
         raise ValueError("Expected 'linearization_order' to be 'row' or 'zigzag'.")
+    return normalized
+
+def _parse_normalization_name(value: Any) -> str:
+    if value is None:
+        return "imagenet"
+    if not isinstance(value, str):
+        raise ValueError("Expected 'normalization_name' to be a string.")
+    normalized = value.lower()
+    if normalized not in ("imagenet", "none"):
+        raise ValueError("Expected 'normalization_name' to be 'imagenet' or 'none'.")
     return normalized
 
 def _parse_head_type(value: Any) -> str:
