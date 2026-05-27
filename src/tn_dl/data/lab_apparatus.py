@@ -208,10 +208,10 @@ def build_lab_apparatus_transform(
             )
 
         return torchvision.transforms.Compose(transform_steps)
-
+    
     transform_steps = [
-       resize_transform,
-       torchvision.transforms.ToTensor(),
+        resize_transform,
+        torchvision.transforms.ToTensor(),
     ]
 
     if normalize is not None:

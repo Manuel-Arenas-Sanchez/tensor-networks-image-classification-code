@@ -17,10 +17,10 @@ data:
   normalization_name: none
 
 model:
-  embedding_name: fixed_patch_trig
+  embedding_name: fixed_patch_stats
   layer_name: custom_ttn
   input_shape: [3, 224, 224]
-  local_dim: 2
+  local_dim: 12
   bond_dim: 12
   n_classes: 25
   patch_size: 16

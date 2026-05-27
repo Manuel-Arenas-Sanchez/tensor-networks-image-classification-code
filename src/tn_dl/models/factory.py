@@ -7,6 +7,7 @@ from torch import nn
 from tn_dl.config import ModelConfig
 from tn_dl.embeddings import (
     AIMPatchEmbedding,
+    FixedPatchStatsEmbedding,
     FixedPatchTrigEmbedding,
     PatchEmbedding,
     TrigPixelEmbedding,
@@ -63,9 +64,27 @@ def build_model(config: ModelConfig) -> nn.Module:
             grid_w = grid_w,
         )
         sequence_length = grid_h * grid_w
+    elif embedding_name == "fixed_patch_stats":
+        if config.patch_size is None:
+            raise ValueError("FixedPatchStatsEmbedding requires 'patch_size' in ModelConfig")
+        if height % config.patch_size != 0 or width % config.patch_size != 0:
+            raise ValueError("input_shape H and W must be divisible by patch_size.")
+        
+        grid_h = height // config.patch_size
+        grid_w = width // config.patch_size
+
+        embedding = FixedPatchStatsEmbedding(
+            patch_size = config.patch_size,
+            local_dim = config.local_dim,
+            in_channels = in_channels,
+            order = order,
+            grid_h = grid_h,
+            grid_w = grid_w,
+        )
+        sequence_length = grid_h * grid_w
     elif embedding_name == "aim_patch":
         if config.patch_size is None:
-            raise ValueError("AimPatchEmbedding requires 'patch_size' in ModelConfig")
+            raise ValueError("AimPatchEmbedding requires 'patch_size' in ModelConfig.")
         if height % config.patch_size != 0 or width % config.patch_size != 0:
             raise ValueError("input_shape H and W must be divisible by patch_size.")
         
