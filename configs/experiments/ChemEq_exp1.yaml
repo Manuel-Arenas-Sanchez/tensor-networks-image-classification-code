@@ -1,0 +1,58 @@
+name: ChemEq_ls0_seed24
+seed: 24
+device: auto
+
+data:
+  dataset: lab_apparatus_crop
+  data_dir: ChemistryLabApparatus-25
+  batch_size: 16
+  num_workers: 4
+  smoke_samples:
+  download: false
+  image_size: 224
+  crop_margin: 0.10
+  preserve_aspect_ratio: true
+
+model:
+  embedding_name: aim_patch
+  layer_name: custom_ttn
+  input_shape: [3, 224, 224]
+  local_dim: 12
+  bond_dim: 12
+  n_classes: 25
+  patch_size: 16
+  linearization_order: zigzag
+
+  aim_channels: 32
+  num_aim_blocks: 3
+  aim_expansion_ratio: 3
+  aim_kernel_size: 3
+  aim_use_ln: true
+
+  head_type: linear
+  head_hidden_dim: 32
+  head_dropout: 0.0
+
+training:
+  epochs: 120
+  learning_rate: 0.00025
+  weight_decay: 0.002
+  log_every_n_steps: 100
+
+  warmup_name: cosine
+  warmup_epochs: 5
+  warmup_start_factor: 0.2
+
+  regularization_name: l2
+  regularization_lambda: 0.000001
+  label_smoothing: 0.0
+
+  scheduler_name: reduce_on_plateau
+  scheduler_factor: 0.5
+  scheduler_patience: 4
+  scheduler_min_lr: 0.000001
+
+io:
+  root_dir: runs
+  checkpoint_name: best.pt
+  metrics_name: metrics.csv

@@ -1,0 +1,32 @@
+name: flowers_custom_ttn
+seed: 7
+device: auto
+
+data:
+  dataset: flowers
+  data_dir: flower_data
+  batch_size: 16
+  num_workers: 0
+  smoke_samples:
+  download: true
+
+model:
+  embedding_name: patch
+  layer_name: custom_ttn 
+  input_shape: [3, 224, 224]
+  local_dim: 2
+  bond_dim: 8
+  n_classes: 102
+  patch_size: 16
+  linearization_order: zigzag
+
+training:
+  epochs: 20
+  learning_rate: 0.001
+  weight_decay: 0.0005
+  log_every_n_steps: 50
+
+io:
+  root_dir: runs
+  checkpoint_name: best.pt 
+  metrics_name: metrics.csv

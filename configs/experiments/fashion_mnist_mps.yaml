@@ -1,0 +1,26 @@
+name: fashion_mnist_mps
+seed: 7
+device: auto
+data:
+  dataset: fashion_mnist
+  data_dir: data
+  batch_size: 64
+  num_workers: 0
+  smoke_samples:
+  download: true
+model:
+  embedding_name: trig
+  layer_name: mps
+  input_shape: [1, 28, 28]
+  local_dim: 2
+  bond_dim: 8
+  n_classes: 10
+training:
+  epochs: 3
+  learning_rate: 0.001
+  weight_decay: 0.0
+  log_every_n_steps: 10
+io:
+  root_dir: runs
+  checkpoint_name: best.pt
+  metrics_name: metrics.csv

@@ -1,0 +1,31 @@
+name: flowers_mps
+seed: 7
+device: auto
+
+data:
+  dataset: flowers
+  data_dir: C:/Users/manuel.arenas/Documents/Manuel Arenas/Pytorch_introduction/Flowers_DL_and_TN/flower_data
+  batch_size: 32
+  num_workers: 0
+  smoke_samples:
+  download: false
+
+model:
+  embedding_name: patch
+  layer_name: mps 
+  input_shape: [3, 224, 224]
+  local_dim: 2
+  bond_dim: 8
+  n_classes: 102
+  patch_size: 16
+
+training:
+  epochs: 10
+  learning_rate: 0.0005
+  weight_decay: 0.0
+  log_every_n_steps: 10
+
+io:
+  root_dir: runs
+  checkpoint_name: best.pt 
+  metrics_name: metrics.csv

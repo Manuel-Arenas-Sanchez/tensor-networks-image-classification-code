@@ -1,0 +1,11 @@
+name: slurm
+output_root: runs
+python_executable: python
+slurm:
+  partition: gpu
+  time: "02:00:00"
+  memory: 32G
+  gpus: 1
+  cpus_per_task: 8
+  account:
+  job_name_prefix: tn-dl

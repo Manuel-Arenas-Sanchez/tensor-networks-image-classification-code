@@ -1,0 +1,28 @@
+.venv/
+.tmp/
+.pytest_tmp/
+.pytest_cache/
+.ruff_cache/
+__pycache__/
+*.pyc
+runs/
+/data/
+.worktrees/
+.git_backup_20260413/
+pip-build-tracker-*/
+pip-ephem-wheel-cache-*/
+pip-install-*/
+pytest-cache-files-*/
+src/tn_dl.egg-info/
+Chat_largo.txt
+Context.txt
+debug_ttn.py
+errores.txt
+.DS_Store
+.claude/
+flower_data/
+History.txt
+audit_*/
+
+# Nota: el dataset ChemistryLabApparatus-25/ se incluye a propósito en la rama
+# resnet50 para poder clonarlo directamente en el servidor de entrenamiento.

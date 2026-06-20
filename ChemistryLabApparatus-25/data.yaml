@@ -1,0 +1,13 @@
+train: ../train/images
+val: ../valid/images
+test: ../test/images
+
+nc: 25
+names: ['Beaker', 'Buchner_Funnel', 'Burette_Stands', 'Calorimeter', 'Conical_Flask', 'Funnel', 'Glass_Rod', 'Measuring_Cylinder', 'Mechanical_Balance_Scale', 'Nessler_Reagent_Bottle', 'Pipette', 'Porcelain_Mortar Pestle', 'Precision_Weight_Scale', 'Reagent_Bottle', 'Round_Bottom_Flask_Borosilicate_Glass_1_Neck', 'Round_Bottom_Flask_Borosilicate_Glass_2_Neck', 'Round_Bottom_Flask_Borosilicate_Glass_3_Neck', 'Separating_Funnel', 'Spirit_Lamp', 'TestTube_Holder', 'Test_Tube', 'Volumetric_Flask', 'Volumetric_Pipet', 'Wash_Bottle', 'Weighing_Bottle']
+
+roboflow:
+  workspace: dip-project-cktfe
+  project: chemistry-lab-apparatus-detn
+  version: 9
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/dip-project-cktfe/chemistry-lab-apparatus-detn/dataset/9
