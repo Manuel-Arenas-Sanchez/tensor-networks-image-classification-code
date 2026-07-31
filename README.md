@@ -95,36 +95,6 @@ Hadamard product. This produces multiplicative interactions that are natural
 from a tensor-network point of view while also adding convolutional parameter
 sharing.
 
-## Current Progress
-
-- [x] Oxford Flowers 102 data pipeline.
-- [x] ChemEq25 / Lab Apparatus crop dataset for instance classification.
-- [x] YAML configuration system.
-- [x] Reference MPS baseline through TensorKrowch.
-- [x] `TrigPixelEmbedding`.
-- [x] `PatchEmbedding`.
-- [x] Zigzag linearization for image-to-sequence conversion.
-- [x] Custom TTN based on 3-node MPS blocks.
-- [x] Structural padding with non-trainable neutral nodes.
-- [x] Hybrid TTN with `LayerNorm -> Linear -> ReLU` between levels.
-- [x] Synthetic forward/backward validation for `L = 9`, `L = 27` and
-  `L = 196`.
-- [x] End-to-end Flowers 102 training with `layer_name: custom_ttn`.
-- [x] Logging during training.
-- [x] `LossTracker` writing `metrics.csv` and `loss_curve.png`.
-- [x] AIM2D layer.
-- [x] AIMPatchEmbedding.
-- [x] Integration for `embedding_name: aim_patch`.
-- [x] Learning-rate scheduler with `ReduceLROnPlateau`.
-- [x] Optional linear learning-rate warmup before `ReduceLROnPlateau`.
-- [x] Data augmentation and richer metrics for Flowers 102.
-- [x] Classification diagnostics and data audits.
-- [x] ChemEq25-specific audit with crop samples and bbox overlays.
-- [x] Smoke checks for ChemEq25 dataloaders and AIM + TTN forward/backward.
-- [x] Full AIM + TTN training run on ChemEq25 crops.
-- [ ] Comparison against the MPS baseline.
-- [ ] ChemEq25 MPS and TTN baseline comparisons.
-
 ## Project Structure
 
 ```text
