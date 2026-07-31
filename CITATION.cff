@@ -1,0 +1,34 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "Tensor Network-Based Machine Learning: Image Classification Benchmarks"
+abstract: >-
+  A reproducible, YAML-driven pipeline for image classification with tensor
+  networks, developed as a BSc Physics bachelor's thesis (TFG). It provides a
+  reference Matrix Product State (MPS) baseline built on TensorKrowch, a custom
+  hierarchical Tree Tensor Network (TTN), a hybrid TTN that interleaves PyTorch
+  transformations between tensor-network levels, and an AIM spatial front-end
+  inspired by the Deep Tree Tensor Network paper. The models are compared under
+  identical data and training conditions on the ChemEq25 chemistry lab apparatus
+  dataset, reformulated from object detection into instance classification by
+  cropping annotated objects, with Oxford Flowers 102 kept as a preliminary
+  benchmark.
+authors:
+  - family-names: "Arenas Sánchez"
+    given-names: "Manuel"
+    email: "manuelarenas2002@hotmail.es"
+    affiliation: "Universidad Europea de Madrid; ITCL"
+    orcid: "https://orcid.org/0009-0003-7427-6886"
+version: 1.0.0
+date-released: "2026-07-31"
+license: MIT
+repository-code: "https://github.com/Manuel-Arenas-Sanchez/Tensor-Network-Model-In-Deep-Learning"
+url: "https://github.com/Manuel-Arenas-Sanchez/Tensor-Network-Model-In-Deep-Learning"
+keywords:
+  - tensor networks
+  - matrix product states
+  - tree tensor network
+  - deep learning
+  - image classification
+  - PyTorch
+  - TensorKrowch

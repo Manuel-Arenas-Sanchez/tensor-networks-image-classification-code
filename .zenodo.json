@@ -1,0 +1,42 @@
+{
+  "title": "Tensor Network-Based Machine Learning: Image Classification Benchmarks",
+  "upload_type": "software",
+  "access_right": "open",
+  "language": "eng",
+  "version": "1.0.0",
+  "license": {
+    "id": "mit"
+  },
+  "creators": [
+    {
+      "name": "Arenas Sánchez, Manuel",
+      "affiliation": "Universidad Europea de Madrid; ITCL",
+      "orcid": "0009-0003-7427-6886"
+    }
+  ],
+  "description": "<p>A reproducible, YAML-driven pipeline for image classification with tensor networks, developed as a BSc Physics bachelor's thesis (TFG) at Universidad Europea de Madrid, with an internship at ITCL.</p><p>The repository implements and compares four tensor-network architectures under identical data and training conditions: a reference Matrix Product State (MPS) baseline built on TensorKrowch; a custom hierarchical Tree Tensor Network (TTN); a hybrid TTN that interleaves PyTorch transformations (LayerNorm, Linear, ReLU) between tensor-network contraction levels to keep the model trainable; and an AIM spatial front-end that adds inductive bias before images are flattened into tensor-network sequences, inspired by Nie et al. (2025), <em>Deep Tree Tensor Networks for Image Recognition</em>.</p><p>The main dataset is ChemEq25 / Chemistry Lab Apparatus (Hossain et al., 2025), reformulated from an object-detection dataset into an instance-classification problem by cropping each annotated laboratory object from its YOLO annotations. Oxford Flowers 102 is retained as a preliminary benchmark. The pipeline includes checkpointing, metrics CSVs (accuracy, F1, recall), loss-curve plots and dataset audits for both datasets.</p>",
+  "keywords": [
+    "tensor networks",
+    "matrix product states",
+    "tree tensor network",
+    "deep learning",
+    "image classification",
+    "PyTorch",
+    "TensorKrowch",
+    "ChemEq25"
+  ],
+  "related_identifiers": [
+    {
+      "identifier": "10.1038/s41597-025-05952-3",
+      "relation": "references",
+      "scheme": "doi",
+      "resource_type": "dataset"
+    },
+    {
+      "identifier": "arXiv:2502.09928",
+      "relation": "references",
+      "scheme": "arxiv",
+      "resource_type": "publication-preprint"
+    }
+  ]
+}

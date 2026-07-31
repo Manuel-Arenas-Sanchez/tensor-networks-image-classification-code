@@ -1,13 +1,18 @@
 [build-system]
-requires = ["setuptools>=69", "wheel"]
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "tn-dl"
-version = "0.1.0"
+version = "1.0.0"
 description = "Tensor-network deep learning template built with PyTorch and TensorKrowch."
 readme = "README.md"
 requires-python = ">=3.11,<3.13"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    {name = "Manuel Arenas Sánchez", email = "manuelarenas2002@hotmail.es"},
+]
 dependencies = [
     "PyYAML>=6.0",
     "torch>=2.8",
